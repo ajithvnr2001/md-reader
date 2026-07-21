@@ -49,6 +49,8 @@ const el = {
   aiSpinner: document.getElementById("aiSpinner"),
   menuBtn: document.getElementById("menuBtn"),
   themeBtn: document.getElementById("themeBtn"),
+  accentBtn: document.getElementById("accentBtn"),
+  accentPopover: document.getElementById("accentPopover"),
   fontUpBtn: document.getElementById("fontUpBtn"),
   fontDownBtn: document.getElementById("fontDownBtn"),
   summarizeBtn: document.getElementById("summarizeBtn"),
@@ -187,6 +189,25 @@ const el = {
   cheatSheetSpinner: document.getElementById("cheatSheetSpinner"),
   cheatSheetContent: document.getElementById("cheatSheetContent"),
   printCheatSheetBtn: document.getElementById("printCheatSheetBtn"),
+
+  // Gamification, Glossary & Focus Mode refs
+  gamificationBadge: document.getElementById("gamificationBadge"),
+  streakDisplay: document.getElementById("streakDisplay"),
+  levelDisplay: document.getElementById("levelDisplay"),
+  gamificationModal: document.getElementById("gamificationModal"),
+  gamificationModalClose: document.getElementById("gamificationModalClose"),
+  gamiLevelTitle: document.getElementById("gamiLevelTitle"),
+  gamiStreakText: document.getElementById("gamiStreakText"),
+  gamiXpBar: document.getElementById("gamiXpBar"),
+  gamiXpCurrent: document.getElementById("gamiXpCurrent"),
+  gamiXpTarget: document.getElementById("gamiXpTarget"),
+  gamiBadgesGrid: document.getElementById("gamiBadgesGrid"),
+
+  autoGlossaryBtn: document.getElementById("autoGlossaryBtn"),
+
+  focusToggleBtn: document.getElementById("focusToggleBtn"),
+  focusInput: document.getElementById("focusInput"),
+  focusClearBtn: document.getElementById("focusClearBtn"),
 };
 
 /* ---------------- Helper: Show/Hide ---------------- */
@@ -283,6 +304,78 @@ el.themeBtn.addEventListener("click", () => {
   applyTheme();
 });
 applyTheme();
+
+/* ---------------- Accent Color Theme ---------------- */
+
+if (el.accentPopover) {
+  document.body.appendChild(el.accentPopover);
+  el.accentPopover.style.position = 'fixed';
+  el.accentPopover.style.zIndex = '99999';
+}
+
+function positionAccentPopover() {
+  if (!el.accentBtn || !el.accentPopover) return;
+  const rect = el.accentBtn.getBoundingClientRect();
+  let top = rect.bottom + 8;
+  let right = window.innerWidth - rect.right;
+  if (right < 8) right = 8;
+  el.accentPopover.style.top = top + 'px';
+  el.accentPopover.style.right = right + 'px';
+  el.accentPopover.style.left = 'auto';
+}
+
+if (el.accentBtn && el.accentPopover) {
+  el.accentBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const visible = el.accentPopover.style.display === "block";
+    if (visible) {
+      hide(el.accentPopover);
+    } else {
+      positionAccentPopover();
+      show(el.accentPopover, 'block');
+    }
+  });
+
+  el.accentBtn.addEventListener("touchend", (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const visible = el.accentPopover.style.display === "block";
+    if (visible) {
+      hide(el.accentPopover);
+    } else {
+      positionAccentPopover();
+      show(el.accentPopover, 'block');
+    }
+  });
+
+  el.accentPopover.querySelectorAll(".swatch").forEach(swatch => {
+    swatch.addEventListener("click", (e) => {
+      e.stopPropagation();
+      applyAccent(swatch.dataset.accent);
+      hide(el.accentPopover);
+    });
+    swatch.addEventListener("touchend", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      applyAccent(swatch.dataset.accent);
+      hide(el.accentPopover);
+    });
+  });
+
+  document.addEventListener("click", (e) => {
+    if (el.accentPopover && !el.accentPopover.contains(e.target) && !el.accentBtn.contains(e.target)) {
+      hide(el.accentPopover);
+    }
+  });
+  document.addEventListener("touchstart", (e) => {
+    if (el.accentPopover && el.accentPopover.style.display === "block" &&
+        !el.accentPopover.contains(e.target) && !el.accentBtn.contains(e.target)) {
+      hide(el.accentPopover);
+    }
+  }, { passive: true });
+}
+
+applyAccent(state.activeAccent);
 
 /* ---------------- Font scaling ---------------- */
 function applyFontScale() {
@@ -2111,82 +2204,6 @@ window.exportFlashcardsToAnki = function() {
   document.body.removeChild(link);
 };
 
-/* ---------------- Accent Color Theme ---------------- */
-
-// Move popover to <body> so it escapes any stacking context
-// caused by backdrop-filter on the topbar (mobile WebKit bug)
-document.body.appendChild(el.accentPopover);
-el.accentPopover.style.position = 'fixed';
-el.accentPopover.style.zIndex = '99999';
-
-function positionAccentPopover() {
-  const rect = el.accentBtn.getBoundingClientRect();
-  const popW = 220;
-  // Place below the button
-  let top = rect.bottom + 8;
-  // Align right edge with button right, but don't go off screen
-  let right = window.innerWidth - rect.right;
-  if (right < 8) right = 8;
-  el.accentPopover.style.top = top + 'px';
-  el.accentPopover.style.right = right + 'px';
-  el.accentPopover.style.left = 'auto';
-}
-
-el.accentBtn.addEventListener("click", (e) => {
-  e.stopPropagation();
-  const visible = el.accentPopover.style.display === "block";
-  if (visible) {
-    hide(el.accentPopover);
-  } else {
-    positionAccentPopover();
-    show(el.accentPopover, 'block');
-  }
-});
-
-// Also trigger on touchend for mobile reliability
-el.accentBtn.addEventListener("touchend", (e) => {
-  e.preventDefault(); // prevent the delayed synthetic click
-  e.stopPropagation();
-  const visible = el.accentPopover.style.display === "block";
-  if (visible) {
-    hide(el.accentPopover);
-  } else {
-    positionAccentPopover();
-    show(el.accentPopover, 'block');
-  }
-});
-
-// Swatch selector clicks
-el.accentPopover.querySelectorAll(".swatch").forEach(swatch => {
-  swatch.addEventListener("click", (e) => {
-    e.stopPropagation();
-    applyAccent(swatch.dataset.accent);
-    hide(el.accentPopover);
-  });
-  swatch.addEventListener("touchend", (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    applyAccent(swatch.dataset.accent);
-    hide(el.accentPopover);
-  });
-});
-
-// Close popover when tapping/clicking anywhere else
-document.addEventListener("click", (e) => {
-  if (el.accentPopover && !el.accentPopover.contains(e.target) && e.target !== el.accentBtn) {
-    hide(el.accentPopover);
-  }
-});
-document.addEventListener("touchstart", (e) => {
-  if (el.accentPopover && el.accentPopover.style.display === "block" &&
-      !el.accentPopover.contains(e.target) && e.target !== el.accentBtn) {
-    hide(el.accentPopover);
-  }
-}, { passive: true });
-
-// Initialize accent color
-applyAccent(state.activeAccent);
-
 /* ---------------- Document Exporter (PDF & HTML) ---------------- */
 el.exportPdfBtn.addEventListener("click", () => {
   if (editMode) {
@@ -2608,6 +2625,294 @@ if (el.printCheatSheetBtn) {
     window.print();
   });
 }
+
+/* ================================================================
+   1. GAMIFIED STUDY STREAKS & XP SYSTEM
+   ================================================================ */
+const gamification = {
+  data: {
+    xp: 0,
+    level: 1,
+    streak: 1,
+    lastActiveDate: new Date().toISOString().split('T')[0],
+    readCount: 0,
+    pomodoroCount: 0,
+    quizCount: 0,
+    highlightCount: 0,
+    unlockedBadges: []
+  },
+
+  BADGES: [
+    { id: 'page_turner', icon: '📖', name: 'Page Turner', desc: 'Read 3 documents', condition: (d) => d.readCount >= 3 },
+    { id: 'on_fire', icon: '🔥', name: 'On Fire', desc: 'Maintain a 3-day streak', condition: (d) => d.streak >= 3 },
+    { id: 'focus_master', icon: '⏱️', name: 'Focus Master', desc: 'Complete 2 Pomodoro sessions', condition: (d) => d.pomodoroCount >= 2 },
+    { id: 'quiz_champ', icon: '🧠', name: 'Quiz Champion', desc: 'Take 2 AI Quizzes', condition: (d) => d.quizCount >= 2 },
+    { id: 'annotator', icon: '🖍️', name: 'Annotator', desc: 'Make 5 highlights or notes', condition: (d) => d.highlightCount >= 5 }
+  ],
+
+  init() {
+    try {
+      const raw = localStorage.getItem('md-reader-gamification');
+      if (raw) this.data = { ...this.data, ...JSON.parse(raw) };
+    } catch(e) {}
+
+    this.checkStreak();
+    this.updateUI();
+
+    if (el.gamificationBadge) {
+      el.gamificationBadge.addEventListener('click', () => {
+        this.renderModal();
+        show(el.gamificationModal, 'flex');
+      });
+    }
+
+    if (el.gamificationModalClose) {
+      el.gamificationModalClose.addEventListener('click', () => {
+        hide(el.gamificationModal);
+      });
+    }
+  },
+
+  checkStreak() {
+    const today = new Date().toISOString().split('T')[0];
+    if (this.data.lastActiveDate !== today) {
+      const last = new Date(this.data.lastActiveDate);
+      const curr = new Date(today);
+      const diffDays = Math.round((curr - last) / (1000 * 60 * 60 * 24));
+
+      if (diffDays === 1) {
+        this.data.streak++;
+      } else if (diffDays > 1) {
+        this.data.streak = 1;
+      }
+      this.data.lastActiveDate = today;
+      this.save();
+    }
+  },
+
+  awardXp(amount, actionType) {
+    this.data.xp += amount;
+
+    if (actionType === 'read') this.data.readCount++;
+    if (actionType === 'pomodoro') this.data.pomodoroCount++;
+    if (actionType === 'quiz') this.data.quizCount++;
+    if (actionType === 'highlight') this.data.highlightCount++;
+
+    // Calculate level (100 XP per level)
+    const targetXp = this.data.level * 100;
+    if (this.data.xp >= targetXp) {
+      this.data.level++;
+    }
+
+    // Check badges
+    this.BADGES.forEach(b => {
+      if (!this.data.unlockedBadges.includes(b.id) && b.condition(this.data)) {
+        this.data.unlockedBadges.push(b.id);
+      }
+    });
+
+    this.save();
+    this.updateUI();
+  },
+
+  save() {
+    try {
+      localStorage.setItem('md-reader-gamification', JSON.stringify(this.data));
+    } catch(e) {}
+  },
+
+  updateUI() {
+    if (el.streakDisplay) el.streakDisplay.textContent = `🔥 ${this.data.streak}d`;
+    if (el.levelDisplay) el.levelDisplay.textContent = `⚡ Lvl ${this.data.level}`;
+  },
+
+  renderModal() {
+    const targetXp = this.data.level * 100;
+    const currentLevelXp = this.data.xp % 100;
+    const pct = Math.min(100, Math.round((currentLevelXp / 100) * 100));
+
+    if (el.gamiLevelTitle) el.gamiLevelTitle.textContent = `⚡ Level ${this.data.level} Scholar`;
+    if (el.gamiStreakText) el.gamiStreakText.textContent = `🔥 ${this.data.streak} Day Streak`;
+    if (el.gamiXpBar) el.gamiXpBar.style.width = `${pct}%`;
+    if (el.gamiXpCurrent) el.gamiXpCurrent.textContent = `${this.data.xp} Total XP`;
+    if (el.gamiXpTarget) el.gamiXpTarget.textContent = `${100 - currentLevelXp} XP to Level ${this.data.level + 1}`;
+
+    if (el.gamiBadgesGrid) {
+      el.gamiBadgesGrid.innerHTML = this.BADGES.map(b => {
+        const isUnlocked = this.data.unlockedBadges.includes(b.id);
+        return `
+          <div class="gami-badge-card ${isUnlocked ? '' : 'locked'}">
+            <div class="gami-badge-icon">${b.icon}</div>
+            <div class="gami-badge-name">${b.name}</div>
+            <div class="gami-badge-desc">${b.desc}</div>
+            <div style="font-size:0.65rem; color:${isUnlocked ? 'var(--accent)' : 'var(--text-dim)'}; font-weight:700; margin-top:2px">
+              ${isUnlocked ? '✓ Unlocked' : '🔒 Locked'}
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+  }
+};
+
+/* ================================================================
+   2. AI AUTO-GLOSSARY & HOVER TOOLTIPS
+   ================================================================ */
+const autoGlossary = {
+  terms: [],
+
+  init() {
+    if (el.autoGlossaryBtn) {
+      el.autoGlossaryBtn.addEventListener('click', () => {
+        this.fetchAndApply();
+      });
+    }
+  },
+
+  async fetchAndApply() {
+    if (!state.activeKey) return;
+    
+    const btn = el.autoGlossaryBtn;
+    const originalText = btn.innerHTML;
+    btn.innerHTML = `<span class="spinner-ring" style="width:12px;height:12px;display:inline-block"></span> Extracting...`;
+    
+    try {
+      const res = await fetch("/api/ai/glossary", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ key: state.activeKey })
+      });
+      
+      if (!res.ok) throw new Error(`Server returned ${res.status}`);
+      const data = await res.json();
+      this.terms = data.terms || [];
+      
+      if (this.terms.length > 0) {
+        this.applyToDOM();
+        gamification.awardXp(10, 'glossary');
+      }
+    } catch(err) {
+      alert(`Auto-Glossary error: ${err.message}`);
+    } finally {
+      btn.innerHTML = originalText;
+    }
+  },
+
+  applyToDOM() {
+    if (!this.terms.length || !el.content) return;
+    
+    const paragraphs = el.content.querySelectorAll('p, li, td');
+    paragraphs.forEach(p => {
+      let html = p.innerHTML;
+      this.terms.forEach(item => {
+        const regex = new RegExp(`\\b(${item.term})\\b`, 'gi');
+        html = html.replace(regex, (match) => {
+          return `<span class="glossary-term" data-def="${item.definition.replace(/"/g, '&quot;')}">${match}</span>`;
+        });
+      });
+      p.innerHTML = html;
+    });
+
+    // Attach tooltip events
+    el.content.querySelectorAll('.glossary-term').forEach(elem => {
+      const showTooltip = (e) => {
+        let tooltip = document.getElementById('activeGlossaryTooltip');
+        if (!tooltip) {
+          tooltip = document.createElement('div');
+          tooltip.id = 'activeGlossaryTooltip';
+          tooltip.className = 'glossary-tooltip';
+          document.body.appendChild(tooltip);
+        }
+
+        const term = elem.textContent;
+        const def = elem.dataset.def;
+        tooltip.innerHTML = `<div class="glossary-tooltip-term">${term}</div><div>${def}</div>`;
+        
+        const rect = elem.getBoundingClientRect();
+        tooltip.style.left = Math.max(10, Math.min(window.innerWidth - 300, rect.left)) + 'px';
+        tooltip.style.top = (rect.bottom + window.scrollY + 6) + 'px';
+        tooltip.style.display = 'block';
+      };
+
+      const hideTooltip = () => {
+        const tooltip = document.getElementById('activeGlossaryTooltip');
+        if (tooltip) tooltip.style.display = 'none';
+      };
+
+      elem.addEventListener('mouseenter', showTooltip);
+      elem.addEventListener('mouseleave', hideTooltip);
+      elem.addEventListener('touchstart', (e) => {
+        showTooltip(e);
+        setTimeout(hideTooltip, 3500);
+      });
+    });
+  }
+};
+
+/* ================================================================
+   3. TOPIC FOCUS MODE (CONCEPT ISOLATION)
+   ================================================================ */
+const topicFocus = {
+  active: false,
+
+  init() {
+    if (el.focusToggleBtn) {
+      el.focusToggleBtn.addEventListener('click', () => {
+        this.toggle();
+      });
+    }
+
+    if (el.focusInput) {
+      el.focusInput.addEventListener('input', () => {
+        this.apply(el.focusInput.value.trim());
+      });
+    }
+
+    if (el.focusClearBtn) {
+      el.focusClearBtn.addEventListener('click', () => {
+        if (el.focusInput) el.focusInput.value = '';
+        this.apply('');
+      });
+    }
+  },
+
+  toggle() {
+    this.active = !this.active;
+    if (this.active) {
+      show(el.focusInput, 'inline-block');
+      show(el.focusClearBtn, 'inline-block');
+      el.focusInput.focus();
+    } else {
+      hide(el.focusInput);
+      hide(el.focusClearBtn);
+      this.apply('');
+    }
+  },
+
+  apply(keyword) {
+    if (!el.content) return;
+    const blocks = el.content.querySelectorAll('p, li, blockquote, h1, h2, h3, h4, h5, h6, pre');
+    
+    if (!keyword) {
+      blocks.forEach(b => {
+        b.classList.remove('focus-dimmed', 'focus-highlighted');
+      });
+      return;
+    }
+
+    const kw = keyword.toLowerCase();
+    blocks.forEach(b => {
+      const match = b.textContent.toLowerCase().includes(kw);
+      if (match) {
+        b.classList.add('focus-highlighted');
+        b.classList.remove('focus-dimmed');
+      } else {
+        b.classList.add('focus-dimmed');
+        b.classList.remove('focus-highlighted');
+      }
+    });
+  }
+};
 
 /* ---------------- Pomodoro Timer Logic ---------------- */
 const pomodoro = {
@@ -3361,6 +3666,9 @@ async function initApp() {
   await loadFileList();
   pomodoro.init();
   highlights.init();
+  gamification.init();
+  autoGlossary.init();
+  topicFocus.init();
 
   // Global event delegation for in-page anchor links in the Markdown content
   el.content.addEventListener('click', (e) => {

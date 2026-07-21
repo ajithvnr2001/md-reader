@@ -97,6 +97,12 @@
           </div>
         </div>
 
+        <!-- Gamification Streak & XP Badge -->
+        <button id="gamificationBadge" class="gamification-badge-btn" title="View Gamification Badges & XP Level">
+          <span id="streakDisplay">🔥 1d</span>
+          <span id="levelDisplay">⚡ Lvl 1</span>
+        </button>
+
         <button id="themeBtn" class="theme-btn" aria-label="Toggle day/night theme" title="Toggle theme">
           <span class="theme-icon" id="themeIcon">🌙</span>
         </button>
@@ -157,11 +163,22 @@
           </div>
         </div>
         <!-- Reading stats -->
-        <div id="readingStatsBar" style="display:none; max-width:740px; margin:0 auto 16px; font-size:0.82rem; color:var(--text-dim); align-items:center; gap:8px">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-          <span id="wordCountText">0 words</span>
-          <span>•</span>
-          <span id="readingTimeText">0 min read</span>
+        <div id="readingStatsBar" style="display:none; max-width:740px; margin:0 auto 16px; font-size:0.82rem; color:var(--text-dim); align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px">
+          <div style="display:flex; align-items:center; gap:8px">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+            <span id="wordCountText">0 words</span>
+            <span>•</span>
+            <span id="readingTimeText">0 min read</span>
+          </div>
+
+          <!-- 🎯 Concept Focus Mode Bar -->
+          <div id="focusModeBar" style="display:flex; align-items:center; gap:6px; background:var(--bg-elevated); padding:3px 8px; border-radius:var(--radius); border:1px solid var(--border)">
+            <button id="focusToggleBtn" style="background:none; border:none; color:var(--accent); cursor:pointer; font-size:0.8rem; font-weight:600; display:flex; align-items:center; gap:4px">
+              🎯 Topic Focus
+            </button>
+            <input type="text" id="focusInput" placeholder="Filter concept..." style="display:none; width:130px; padding:3px 6px; font-size:0.75rem; background:var(--bg-card); color:var(--text); border:1px solid var(--border); border-radius:4px; outline:none" />
+            <button id="focusClearBtn" style="display:none; background:none; border:none; color:var(--text-dim); cursor:pointer; font-size:0.75rem">✕</button>
+          </div>
         </div>
 
         <article id="content" class="markdown-body" style="display:none"></article>
@@ -208,6 +225,9 @@
           </button>
           <button id="cheatSheetBtn" class="ai-btn quiz" style="background:#0284c7;color:#fff">
             <span class="ai-btn-icon">📄</span> Cheat Sheet
+          </button>
+          <button id="autoGlossaryBtn" class="ai-btn summarize" style="background:#059669;color:#fff">
+            <span class="ai-btn-icon">🔍</span> Auto-Glossary
           </button>
         </div>
 
@@ -523,6 +543,40 @@
             <span>Generating mind map layout…</span>
           </div>
           <div id="mindMapContainer" style="width:100%; height:100%; overflow:auto; display:flex; justify-content:center; align-items:center"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Gamification & XP Badges Modal -->
+    <div id="gamificationModal" class="modal-overlay" style="display:none">
+      <div class="modal" style="max-width:540px; width:92vw; display:flex; flex-direction:column">
+        <div class="modal-header">
+          <h2>🏆 Study Streaks & XP Achievements</h2>
+          <button id="gamificationModalClose" class="icon-btn" aria-label="Close">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
+        </div>
+        <div class="modal-body" style="padding:20px; background:var(--bg-card); display:flex; flex-direction:column; gap:16px">
+          <!-- Level & XP Progress Card -->
+          <div style="background:var(--bg-elevated); padding:16px; border-radius:var(--radius); border:1px solid var(--border); display:flex; flex-direction:column; gap:8px">
+            <div style="display:flex; justify-content:space-between; align-items:center">
+              <span id="gamiLevelTitle" style="font-weight:700; font-size:1.1rem; color:var(--accent)">⚡ Level 1 Scholar</span>
+              <span id="gamiStreakText" style="font-weight:700; font-size:0.9rem; color:var(--text)">🔥 1 Day Streak</span>
+            </div>
+            <div style="width:100%; height:10px; background:var(--bg-hover); border-radius:5px; overflow:hidden">
+              <div id="gamiXpBar" style="width:20%; height:100%; background:var(--accent); transition:width 0.4s ease"></div>
+            </div>
+            <div style="display:flex; justify-content:space-between; font-size:0.75rem; color:var(--text-dim)">
+              <span id="gamiXpCurrent">0 XP</span>
+              <span id="gamiXpTarget">100 XP to Next Level</span>
+            </div>
+          </div>
+
+          <!-- Badges Section -->
+          <div>
+            <div style="font-size:0.85rem; font-weight:700; color:var(--text); margin-bottom:10px; text-transform:uppercase; letter-spacing:0.04em">🏅 Unlocked Achievements</div>
+            <div id="gamiBadgesGrid" style="display:grid; grid-template-columns:repeat(auto-fill, minmax(140px, 1fr)); gap:10px"></div>
+          </div>
         </div>
       </div>
     </div>

@@ -23,23 +23,26 @@
 - **🗂️ Flashcard Generator**: Produce study flashcards for active recall and revision.
 - **🗺️ Mind Map Generator**: Convert document text into a visual, hierarchical node diagram.
 - **📄 1-Page Exam Cheat Sheet**: Compress all definitions, code syntax, formulas, and rules into a 1-page print-ready reference sheet.
+- **🔍 AI Auto-Glossary**: Extract 8 to 15 key technical terms and display floating AI definition tooltips when hovering or tapping jargon in notes.
 - **💬 Paragraph Discussion Threads with `@AI`**: Leave comments on any highlighted section and tag `@AI` to discuss, explain, or debate points directly in the margin thread.
 - **🔍 Semantic Workspace Search & Synthesis**: Search across all files in your library or synthesize comparative study guides from multiple selected documents.
 
 ---
 
-### 🖍️ Active Reading & Annotation Tools
-- **Multi-Color Text Highlighting**: Highlight document text in 4 colors (Yellow 🟡, Green 🟢, Blue 🔵, Rose 🔴).
-- **Sticky Margin Notes**: Attach collapsible margin notes to any highlight with auto-scrolling between notes and text.
-- **Pomodoro Study Timer**: Built-in 25/5/15 minute study timer with synthesized Web Audio alerts.
-- **Read Aloud (Text-to-Speech)**: Listen to document text with adjustable speech rates (0.75x to 2x).
-- **Reading Stats**: Real-time word count and estimated reading time indicator.
+### 🎮 Gamification & Active Reading Tools
+- **🎮 Gamified Study Streaks & XP System**: Earn XP for reading, completing Pomodoros, taking quizzes, and annotating. Unlock achievement badges (Page Turner, On Fire, Focus Master, Quiz Champion, Annotator) and level up.
+- **🎯 Topic Focus Mode (Concept Isolation)**: Filter documents by keyword/concept. Unrelated sections dim out while matching paragraphs remain highlighted.
+- **🖍️ Multi-Color Text Highlighting**: Highlight document text in 4 colors (Yellow 🟡, Green 🟢, Blue 🔵, Rose 🔴).
+- **📝 Sticky Margin Notes**: Attach collapsible margin notes to any highlight with auto-scrolling between notes and text.
+- **⏱️ Pomodoro Study Timer**: Built-in 25/5/15 minute study timer with synthesized Web Audio alerts.
+- **🗣️ Read Aloud (Text-to-Speech)**: Listen to document text with adjustable speech rates (0.75x to 2x).
+- **📊 Reading Stats**: Real-time word count and estimated reading time indicator.
 
 ---
 
 ### 🎨 Customization & Accessibility
 - **Day / Night Themes**: Instant toggle between Dark Mode and Light Mode.
-- **Dynamic Accent Color Picker**: Select custom HSL color accents (Indigo, Emerald, Sky, Rose, Amber).
+- **Dynamic Accent Color Picker**: Select custom HSL color accents (Indigo, Emerald, Sky, Rose, Amber) with fixed mobile-ready popovers.
 - **Adjustable Typography**: Font size scaling controls (A+ / A-) for comfortable reading on any screen size.
 - **Mobile Responsive Layout**: Optimized touch targets, swipeable bars, and adaptive popovers for ultra-narrow mobile viewports.
 

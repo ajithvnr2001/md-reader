@@ -236,6 +236,23 @@ const cheatsheetSchema = {
   required: ["title", "keyDefinitions", "formulasAndSyntax", "coreRulesAndTips"]
 };
 
+const glossarySchema = {
+  type: "OBJECT",
+  properties: {
+    terms: {
+      type: "ARRAY",
+      items: {
+        type: "OBJECT",
+        properties: {
+          term: { type: "STRING" },
+          definition: { type: "STRING" }
+        },
+        required: ["term", "definition"]
+      }
+    }
+  },
+  required: ["terms"]
+};
 
 export default {
   async fetch(request, env) {
@@ -558,6 +575,24 @@ ${docContext}Target Paragraph:
       } catch (err) {
         console.error("Comment error:", err);
         return json({ error: err.message || "Gemini comment failed" }, 500);
+      }
+    }
+
+    // ---- API: Gemini — auto glossary ----
+    if (pathname === "/api/ai/glossary" && request.method === "POST") {
+      try {
+        const { key } = await request.json();
+        const text = await getMarkdownText(env, key);
+        if (text === null) return json({ error: "File not found" }, 404);
+
+        const systemInstruction = "You detect and extract 8 to 15 key technical terms, acronyms, and specialized jargon from the document. For each term, provide a clear 1-sentence definition.";
+        const messages = [{ role: "user", content: `Please extract key glossary terms for this document:\n\n${text}` }];
+
+        const responseText = await runGemini(env, messages, systemInstruction, "application/json", glossarySchema);
+        return json(JSON.parse(responseText));
+      } catch (err) {
+        console.error("Glossary error:", err);
+        return json({ error: err.message || "Gemini glossary failed" }, 500);
       }
     }
 

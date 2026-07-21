@@ -1,0 +1,34 @@
+name = "md-reader-r2"
+main = "src/index.js"
+compatibility_date = "2026-01-01"
+compatibility_flags = ["nodejs_compat"]
+workers_dev = true
+
+# ---------------------------------------------------------
+# R2 bucket binding — replace bucket_name with your bucket
+# Create it first with:  wrangler r2 bucket create my-md-docs
+# ---------------------------------------------------------
+[[r2_buckets]]
+binding = "MD_BUCKET"
+bucket_name = "my-md-docs"
+
+# ---------------------------------------------------------
+# Workers AI binding (no separate resource needed)
+# ---------------------------------------------------------
+[ai]
+binding = "AI"
+
+# ---------------------------------------------------------
+# Bundle static frontend files (html/css/js) as raw text
+# so index.js can `import` and serve them directly.
+# ---------------------------------------------------------
+[[rules]]
+type = "Text"
+globs = ["public/**/*.txt"]
+fallthrough = true
+
+[vars]
+# Model used for all AI features — change to any Workers AI text model
+AI_MODEL = "gemini-3.5-flash-lite"
+# Set to "true" to require the X-Auth-Key header on write endpoints
+REQUIRE_AUTH = "false"

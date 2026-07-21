@@ -1,0 +1,21 @@
+{
+  "name": "md-reader-r2",
+  "version": "1.0.0",
+  "description": "Mobile-friendly, day/night Markdown reader that streams .md files from Cloudflare R2 and uses Workers AI for summaries, explanations and quizzes.",
+  "main": "src/index.js",
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "tail": "wrangler tail",
+    "bucket:create": "wrangler r2 bucket create my-md-docs",
+    "upload:sample": "wrangler r2 object put my-md-docs/intro.md --file=sample-docs/intro.md",
+    "upload:sample2": "wrangler r2 object put my-md-docs/photosynthesis.md --file=sample-docs/photosynthesis.md"
+  },
+  "dependencies": {
+    "marked": "^12.0.2"
+  },
+  "devDependencies": {
+    "wrangler": "^3.90.0"
+  }
+}

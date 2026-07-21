@@ -1,0 +1,566 @@
+/**
+ * md-reader-r2 — Cloudflare Worker
+ * ---------------------------------------------------------------
+ * Serves a mobile-friendly Markdown reader UI and exposes a small
+ * JSON API that:
+ *   1. Lists .md files stored in an R2 bucket
+ *   2. Streams the raw Markdown content of a chosen file
+ *   3. Uses Workers AI to summarize / explain / quiz on that file
+ *
+ * Routes
+ *   GET  /                      -> reader UI (index.html)
+ *   GET  /style.css             -> stylesheet (day/night themes)
+ *   GET  /app.js                -> frontend logic
+ *   GET  /api/list              -> [{ key, size, uploaded }]
+ *   GET  /api/file?key=...      -> raw markdown text (text/markdown)
+ *   POST /api/ai/summarize      -> { key } -> { summary }
+ *   POST /api/ai/explain        -> { key, selection } -> { explanation }
+ *   POST /api/ai/quiz           -> { key } -> { quiz: [...] }
+ *   PUT  /api/upload?key=...    -> (optional) upload a new .md file
+ * ---------------------------------------------------------------
+ */
+
+import indexHtml from "../public/index.html.txt";
+import styleCss from "../public/css/style.css.txt";
+import appJs from "../public/js/app.js.txt";
+import manifestJson from "../public/manifest.json.txt";
+import swJs from "../public/sw.js.txt";
+import iconSvg from "../public/icon.svg.txt";
+
+const JSON_HEADERS = { "content-type": "application/json; charset=utf-8" };
+const CORS_HEADERS = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "GET,POST,PUT,OPTIONS",
+  "Access-Control-Allow-Headers": "Content-Type, X-Auth-Key",
+};
+
+function json(data, status = 200) {
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: { ...JSON_HEADERS, ...CORS_HEADERS },
+  });
+}
+
+function assetResponse(body, contentType) {
+  return new Response(body, {
+    headers: {
+      "content-type": contentType,
+      "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+      ...CORS_HEADERS,
+    },
+  });
+}
+
+function checkAuth(request, env) {
+  if (env.REQUIRE_AUTH !== "true") return true;
+  const key = request.headers.get("X-Auth-Key");
+  return key && env.UPLOAD_SECRET && key === env.UPLOAD_SECRET;
+}
+
+async function listMarkdownFiles(env) {
+  const options = { limit: 1000 };
+  let listed = await env.MD_BUCKET.list(options);
+  let objects = [...listed.objects];
+  while (listed.truncated) {
+    listed = await env.MD_BUCKET.list({ ...options, cursor: listed.cursor });
+    objects.push(...listed.objects);
+  }
+  return objects
+    .filter((o) => o.key.toLowerCase().endsWith(".md"))
+    .map((o) => ({
+      key: o.key,
+      size: o.size,
+      uploaded: o.uploaded,
+    }))
+    .sort((a, b) => a.key.localeCompare(b.key));
+}
+
+async function getMarkdownText(env, key) {
+  const obj = await env.MD_BUCKET.get(key);
+  if (!obj) return null;
+  return await obj.text();
+}
+
+/** Trim long docs so we stay within the model's context window. */
+function truncateForModel(text, maxChars = 12000) {
+  if (text.length <= maxChars) return text;
+  return text.slice(0, maxChars) + "\n\n[...truncated for AI processing...]";
+}
+
+async function runGemini(env, messages, systemInstruction = "", responseMimeType = "text/plain", responseSchema = null) {
+  const apiKey = env.GEMINI_API_KEY || "";
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent?key=${apiKey}`;
+  
+  const contents = messages.map(m => {
+    let parts = [];
+    if (m.parts) {
+      parts = m.parts;
+    } else {
+      parts = [{ text: m.content || m.text || "" }];
+    }
+    return {
+      role: m.role === "assistant" || m.role === "model" ? "model" : "user",
+      parts
+    };
+  });
+
+  const body = {
+    contents,
+    generationConfig: {}
+  };
+
+  if (systemInstruction) {
+    body.systemInstruction = {
+      parts: [{ text: systemInstruction }]
+    };
+  }
+
+  if (responseMimeType) {
+    body.generationConfig.responseMimeType = responseMimeType;
+  }
+
+  if (responseSchema) {
+    body.generationConfig.responseSchema = responseSchema;
+  }
+
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body)
+  });
+
+  if (!res.ok) {
+    const errText = await res.text();
+    throw new Error(`Gemini API error: ${res.status} - ${errText}`);
+  }
+
+  const data = await res.json();
+  if (data.candidates && data.candidates[0] && data.candidates[0].content && data.candidates[0].content.parts) {
+    return data.candidates[0].content.parts[0].text;
+  }
+
+  throw new Error(`Unexpected Gemini response: ${JSON.stringify(data)}`);
+}
+
+const summarizeSchema = {
+  type: "OBJECT",
+  properties: {
+    summary: {
+      type: "STRING",
+      description: "A bulleted summary of the document context."
+    },
+    keyConcepts: {
+      type: "ARRAY",
+      items: { type: "STRING" },
+      description: "Core concepts discussed in this document."
+    }
+  },
+  required: ["summary", "keyConcepts"]
+};
+
+const quizSchema = {
+  type: "OBJECT",
+  properties: {
+    quiz: {
+      type: "ARRAY",
+      items: {
+        type: "OBJECT",
+        properties: {
+          question: { type: "STRING" },
+          options: {
+            type: "ARRAY",
+            items: { type: "STRING" }
+          },
+          answerIndex: { type: "INTEGER" }
+        },
+        required: ["question", "options", "answerIndex"]
+      }
+    }
+  },
+  required: ["quiz"]
+};
+
+const chatSchema = {
+  type: "OBJECT",
+  properties: {
+    reply: {
+      type: "STRING",
+      description: "The answer or explanation to the user's message, in clean Markdown format."
+    },
+    suggestedQuestions: {
+      type: "ARRAY",
+      items: { type: "STRING" },
+      description: "Exactly 2 or 3 logical follow-up questions the user might want to click next."
+    },
+    keyConcepts: {
+      type: "ARRAY",
+      items: { type: "STRING" },
+      description: "Key concepts or terms mentioned in this answer."
+    }
+  },
+  required: ["reply", "suggestedQuestions", "keyConcepts"]
+};
+
+const cheatsheetSchema = {
+  type: "OBJECT",
+  properties: {
+    title: { type: "STRING" },
+    keyDefinitions: {
+      type: "ARRAY",
+      items: {
+        type: "OBJECT",
+        properties: {
+          term: { type: "STRING" },
+          definition: { type: "STRING" }
+        },
+        required: ["term", "definition"]
+      }
+    },
+    formulasAndSyntax: {
+      type: "ARRAY",
+      items: {
+        type: "OBJECT",
+        properties: {
+          concept: { type: "STRING" },
+          codeOrFormula: { type: "STRING" },
+          explanation: { type: "STRING" }
+        },
+        required: ["concept", "codeOrFormula", "explanation"]
+      }
+    },
+    coreRulesAndTips: {
+      type: "ARRAY",
+      items: { type: "STRING" }
+    }
+  },
+  required: ["title", "keyDefinitions", "formulasAndSyntax", "coreRulesAndTips"]
+};
+
+
+export default {
+  async fetch(request, env) {
+    const url = new URL(request.url);
+    const { pathname } = url;
+
+    if (request.method === "OPTIONS") {
+      return new Response(null, { headers: CORS_HEADERS });
+    }
+
+    // ---- Static frontend ----
+    if (pathname === "/" || pathname === "/index.html") {
+      return assetResponse(indexHtml, "text/html; charset=utf-8");
+    }
+    if (pathname === "/style.css") {
+      return assetResponse(styleCss, "text/css; charset=utf-8");
+    }
+    if (pathname === "/app.js") {
+      return assetResponse(appJs, "application/javascript; charset=utf-8");
+    }
+    if (pathname === "/manifest.json") {
+      return assetResponse(manifestJson, "application/json; charset=utf-8");
+    }
+    if (pathname === "/sw.js") {
+      return assetResponse(swJs, "application/javascript; charset=utf-8");
+    }
+    if (pathname === "/icon.svg") {
+      return assetResponse(iconSvg, "image/svg+xml; charset=utf-8");
+    }
+
+    // ---- API: sync AI cache ----
+    if (pathname === "/api/ai/cache") {
+      if (request.method === "GET") {
+        try {
+          const obj = await env.MD_BUCKET.get(".ai_cache.json");
+          if (!obj) return json({});
+          const text = await obj.text();
+          return new Response(text, {
+            headers: { "content-type": "application/json; charset=utf-8", ...CORS_HEADERS }
+          });
+        } catch (err) {
+          return json({ error: err.message }, 500);
+        }
+      }
+      if (request.method === "POST") {
+        try {
+          const body = await request.text();
+          await env.MD_BUCKET.put(".ai_cache.json", body);
+          return json({ ok: true });
+        } catch (err) {
+          return json({ error: err.message }, 500);
+        }
+      }
+    }
+
+    // ---- API: list files ----
+    if (pathname === "/api/list" && request.method === "GET") {
+      try {
+        const files = await listMarkdownFiles(env);
+        return json({ files });
+      } catch (err) {
+        return json({ error: err.message }, 500);
+      }
+    }
+
+    // ---- API: get raw markdown ----
+    if (pathname === "/api/file" && request.method === "GET") {
+      const key = url.searchParams.get("key");
+      if (!key) return json({ error: "Missing ?key=" }, 400);
+      const text = await getMarkdownText(env, key);
+      if (text === null) return json({ error: "File not found" }, 404);
+      return new Response(text, {
+        headers: { "content-type": "text/markdown; charset=utf-8", ...CORS_HEADERS },
+      });
+    }
+
+    // ---- API: upload (optional, protected) ----
+    if (pathname === "/api/upload" && request.method === "PUT") {
+      if (!checkAuth(request, env)) return json({ error: "Unauthorized" }, 401);
+      const key = url.searchParams.get("key");
+      if (!key || !key.toLowerCase().endsWith(".md")) {
+        return json({ error: "Provide ?key=name.md" }, 400);
+      }
+      await env.MD_BUCKET.put(key, request.body);
+      return json({ ok: true, key });
+    }
+
+    // ---- API: delete file (protected) ----
+    if (pathname === "/api/file" && request.method === "DELETE") {
+      if (!checkAuth(request, env)) return json({ error: "Unauthorized" }, 401);
+      const key = url.searchParams.get("key");
+      if (!key) return json({ error: "Missing ?key=" }, 400);
+      await env.MD_BUCKET.delete(key);
+      return json({ ok: true });
+    }
+
+    // ---- API: delete folder (protected) ----
+    if (pathname === "/api/folder" && request.method === "DELETE") {
+      if (!checkAuth(request, env)) return json({ error: "Unauthorized" }, 401);
+      const prefix = url.searchParams.get("prefix");
+      if (!prefix) return json({ error: "Missing ?prefix=" }, 400);
+      
+      const cleanPrefix = prefix.endsWith('/') ? prefix : `${prefix}/`;
+      let listed = await env.MD_BUCKET.list({ prefix: cleanPrefix });
+      let deletedKeys = [];
+      for (const obj of listed.objects) {
+        await env.MD_BUCKET.delete(obj.key);
+        deletedKeys.push(obj.key);
+      }
+      
+      return json({ ok: true, deletedCount: deletedKeys.length, keys: deletedKeys });
+    }
+
+    // ---- API: rename file (protected) ----
+    if (pathname === "/api/rename" && request.method === "POST") {
+      if (!checkAuth(request, env)) return json({ error: "Unauthorized" }, 401);
+      try {
+        const { oldKey, newName } = await request.json();
+        if (!oldKey || !newName) return json({ error: "Missing oldKey or newName" }, 400);
+        
+        // Construct new key: keep the folder path, swap the filename
+        const parts = oldKey.split('/');
+        parts.pop(); // remove old name
+        const newNameClean = newName.toLowerCase().endsWith('.md') ? newName : `${newName}.md`;
+        parts.push(newNameClean);
+        const newKey = parts.join('/');
+        
+        if (oldKey === newKey) return json({ ok: true });
+        
+        // Fetch, Put, Delete
+        const oldObj = await env.MD_BUCKET.get(oldKey);
+        if (!oldObj) return json({ error: "Original file not found" }, 404);
+        
+        const body = await oldObj.arrayBuffer();
+        await env.MD_BUCKET.put(newKey, body);
+        await env.MD_BUCKET.delete(oldKey);
+        
+        return json({ ok: true, newKey });
+      } catch (e) {
+        return json({ error: e.message }, 500);
+      }
+    }
+
+    // ---- API: move file (protected) ----
+    if (pathname === "/api/move" && request.method === "POST") {
+      if (!checkAuth(request, env)) return json({ error: "Unauthorized" }, 401);
+      try {
+        const { oldKey, newFolder } = await request.json();
+        if (!oldKey || newFolder === undefined) return json({ error: "Missing oldKey or newFolder" }, 400);
+        
+        const filename = oldKey.split('/').pop();
+        const cleanFolder = newFolder.trim().replace(/^\/+|\/+$/g, '');
+        const newKey = cleanFolder ? `${cleanFolder}/${filename}` : filename;
+        
+        if (oldKey === newKey) return json({ ok: true });
+        
+        // Fetch, Put, Delete
+        const oldObj = await env.MD_BUCKET.get(oldKey);
+        if (!oldObj) return json({ error: "Original file not found" }, 404);
+        
+        const body = await oldObj.arrayBuffer();
+        await env.MD_BUCKET.put(newKey, body);
+        await env.MD_BUCKET.delete(oldKey);
+        
+        return json({ ok: true, newKey });
+      } catch (e) {
+        return json({ error: e.message }, 500);
+      }
+    }
+
+    // ---- API: Gemini — summarize ----
+    if (pathname === "/api/ai/summarize" && request.method === "POST") {
+      try {
+        const { key } = await request.json();
+        const text = await getMarkdownText(env, key);
+        if (text === null) return json({ error: "File not found" }, 404);
+        
+        const systemInstruction = "You are a helpful study assistant. Summarize the given document in clean bullet points.";
+        const messages = [{ role: "user", content: `Please summarize this document:\n\n${text}` }];
+        
+        const responseText = await runGemini(env, messages, systemInstruction, "application/json", summarizeSchema);
+        return json(JSON.parse(responseText));
+      } catch (err) {
+        console.error("Summarize error:", err);
+        return json({ error: err.message || "Gemini summarize failed" }, 500);
+      }
+    }
+
+    // ---- API: Gemini — explain selection ----
+    if (pathname === "/api/ai/explain" && request.method === "POST") {
+      try {
+        const { key, selection } = await request.json();
+        const text = await getMarkdownText(env, key);
+        if (text === null) return json({ error: "File not found" }, 404);
+        
+        const systemInstruction = `You are a helpful study tutor. When explaining systems, architectures, comparisons, or sequences, always construct a clean, valid Mermaid.js flowchart or graph inside a fenced markdown block (using \`\`\`mermaid) to help the user visualize the explanation. Keep your reply simple and easy to understand. Below is the Markdown document context:
+${text}`;
+        const prompt = selection && selection.trim().length > 0
+          ? `Explain this specific selection in simple terms: "${selection}"`
+          : `Explain the key concepts of this document in simple terms.`;
+          
+        const messages = [{ role: "user", content: prompt }];
+        const responseText = await runGemini(env, messages, systemInstruction, "application/json", chatSchema);
+        return json(JSON.parse(responseText));
+      } catch (err) {
+        console.error("Explain error:", err);
+        return json({ error: err.message || "Gemini explain failed" }, 500);
+      }
+    }
+
+    // ---- API: Gemini — quiz ----
+    if (pathname === "/api/ai/quiz" && request.method === "POST") {
+      try {
+        const { key } = await request.json();
+        const text = await getMarkdownText(env, key);
+        if (text === null) return json({ error: "File not found" }, 404);
+        
+        const systemInstruction = "You generate short study quizzes based on the document. Generate exactly 5 multiple-choice questions.";
+        const messages = [{ role: "user", content: `Please generate a quiz for this document:\n\n${text}` }];
+        
+        const responseText = await runGemini(env, messages, systemInstruction, "application/json", quizSchema);
+        return json(JSON.parse(responseText));
+      } catch (err) {
+        console.error("Quiz error:", err);
+        return json({ error: err.message || "Gemini quiz failed" }, 500);
+      }
+    }
+
+    // ---- API: Gemini — chat ----
+    if (pathname === "/api/ai/chat" && request.method === "POST") {
+      try {
+        const { key, messages } = await request.json();
+        let systemInstruction = "";
+        
+        if (key) {
+          const text = await getMarkdownText(env, key);
+          if (text === null) return json({ error: "File not found" }, 404);
+          
+          systemInstruction = `You are a helpful study tutor. Below is the Markdown document context for this chat session:
+
+--- START OF DOCUMENT ---
+${text}
+--- END OF DOCUMENT ---
+
+Help the user study, explain concepts, answer questions, and tutor them on this document.
+When explaining systems, architectures, comparisons, or sequences, construct a clean, valid Mermaid.js flowchart or graph inside a fenced markdown block (using \`\`\`mermaid) to help the user visualize the explanation.
+Always return your response structured according to the requested JSON schema.`;
+        } else {
+          systemInstruction = `You are a helpful, friendly, and knowledgeable AI assistant.
+Answer the user's questions in detail, formatting your response with clean Markdown.
+When explaining systems, architectures, comparisons, or sequences, construct a clean, valid Mermaid.js flowchart or graph inside a fenced markdown block (using \`\`\`mermaid) to help the user visualize the explanation.
+Always return your response structured according to the requested JSON schema.`;
+        }
+
+        const responseText = await runGemini(env, messages, systemInstruction, "application/json", chatSchema);
+        return json(JSON.parse(responseText));
+      } catch (err) {
+        console.error("Chat error:", err);
+        return json({ error: err.message || "Gemini chat failed" }, 500);
+      }
+    }
+
+    // ---- API: Gemini — flashcards ----
+    if (pathname === "/api/ai/flashcards" && request.method === "POST") {
+      try {
+        const { key } = await request.json();
+        const text = await getMarkdownText(env, key);
+        if (text === null) return json({ error: "File not found" }, 404);
+        
+        const systemInstruction = "You generate high-quality study flashcards based on the document context. Generate exactly 5 to 8 cards containing a term or question on the front, and a clear, short definition or answer on the back.";
+        const messages = [{ role: "user", content: `Please generate flashcards for this document:\n\n${text}` }];
+        
+        const responseText = await runGemini(env, messages, systemInstruction, "application/json", flashcardsSchema);
+        return json(JSON.parse(responseText));
+      } catch (err) {
+        console.error("Flashcards error:", err);
+        return json({ error: err.message || "Gemini flashcards failed" }, 500);
+      }
+    }
+
+    // ---- API: Gemini — cheatsheet ----
+    if (pathname === "/api/ai/cheatsheet" && request.method === "POST") {
+      try {
+        const { key } = await request.json();
+        const text = await getMarkdownText(env, key);
+        if (text === null) return json({ error: "File not found" }, 404);
+        
+        const systemInstruction = "You extract and compress all key definitions, code syntax, formulas, commands, and core rules into a highly dense, 1-page print-ready exam cheat sheet.";
+        const messages = [{ role: "user", content: `Please create a 1-page exam cheat sheet for this document:\n\n${text}` }];
+        
+        const responseText = await runGemini(env, messages, systemInstruction, "application/json", cheatsheetSchema);
+        return json(JSON.parse(responseText));
+      } catch (err) {
+        console.error("Cheatsheet error:", err);
+        return json({ error: err.message || "Gemini cheatsheet failed" }, 500);
+      }
+    }
+
+    // ---- API: Gemini — paragraph comment thread ----
+    if (pathname === "/api/ai/comment" && request.method === "POST") {
+      try {
+        const { key, paragraphText, commentText, threadHistory } = await request.json();
+        let docContext = "";
+        if (key) {
+          const text = await getMarkdownText(env, key);
+          if (text) docContext = `Document Context:\n${truncateForModel(text, 6000)}\n\n`;
+        }
+        
+        const systemInstruction = `You are a helpful AI study assistant. The user has left a comment or question on a specific paragraph in a study document.
+Answer their comment, debate their point, or clarify the paragraph in detail using clean Markdown.
+${docContext}Target Paragraph:
+"${paragraphText || ''}"`;
+
+        const messages = threadHistory && threadHistory.length > 0
+          ? threadHistory
+          : [{ role: "user", content: commentText || "Please explain this paragraph." }];
+
+        const responseText = await runGemini(env, messages, systemInstruction, "application/json", chatSchema);
+        return json(JSON.parse(responseText));
+      } catch (err) {
+        console.error("Comment error:", err);
+        return json({ error: err.message || "Gemini comment failed" }, 500);
+      }
+    }
+
+    return json({ error: "Not found" }, 404);
+  },
+};

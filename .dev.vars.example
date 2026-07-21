@@ -1,0 +1,2 @@
+# Copy this file to .dev.vars for local testing (never commit real secrets)
+UPLOAD_SECRET=change-me-super-secret

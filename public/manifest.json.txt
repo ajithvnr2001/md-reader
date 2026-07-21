@@ -1,0 +1,19 @@
+{
+  "name": "MD Reader — AI Study Notes",
+  "short_name": "MD Reader",
+  "description": "Mobile-friendly Markdown notes reader with AI summaries, quizzes, flashcards, and tutor.",
+  "start_url": "/?pwa=true",
+  "display": "standalone",
+  "background_color": "#15171e",
+  "theme_color": "#3a0ca3",
+  "orientation": "portrait-primary",
+  "categories": ["education", "utilities"],
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

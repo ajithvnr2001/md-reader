@@ -20,6 +20,11 @@ const state = {
   isEditingUnlocked: false,
   synthesisMode: false,
   selectedKeys: new Set(),
+  activeFont: localStorage.getItem("md-reader-font-family") || "inter",
+  lineHeight: localStorage.getItem("md-reader-line-height") || "1.6",
+  isSplitMode: false,
+  activePane: "primary",
+  secondaryKey: null,
 };
 
 function saveAiCache() {
@@ -49,6 +54,7 @@ const el = {
   aiSpinner: document.getElementById("aiSpinner"),
   menuBtn: document.getElementById("menuBtn"),
   themeBtn: document.getElementById("themeBtn"),
+  themePopover: document.getElementById("themePopover"),
   accentBtn: document.getElementById("accentBtn"),
   accentPopover: document.getElementById("accentPopover"),
   fontUpBtn: document.getElementById("fontUpBtn"),
@@ -208,6 +214,21 @@ const el = {
   focusToggleBtn: document.getElementById("focusToggleBtn"),
   focusInput: document.getElementById("focusInput"),
   focusClearBtn: document.getElementById("focusClearBtn"),
+
+  // Split Mode & Font Settings refs
+  splitModeBtn: document.getElementById("splitModeBtn"),
+  readerSplitWrapper: document.getElementById("readerSplitWrapper"),
+  primaryPane: document.getElementById("primaryPane"),
+  secondaryPane: document.getElementById("secondaryPane"),
+  contentSecondary: document.getElementById("contentSecondary"),
+  readingStatsBarSecondary: document.getElementById("readingStatsBarSecondary"),
+  wordCountTextSecondary: document.getElementById("wordCountTextSecondary"),
+  readingTimeTextSecondary: document.getElementById("readingTimeTextSecondary"),
+  
+  fontSettingsBtn: document.getElementById("fontSettingsBtn"),
+  fontSettingsPopover: document.getElementById("fontSettingsPopover"),
+  fontFamilySelect: document.getElementById("fontFamilySelect"),
+  lineHeightSelect: document.getElementById("lineHeightSelect"),
 };
 
 /* ---------------- Helper: Show/Hide ---------------- */
@@ -220,15 +241,28 @@ function hide(element) {
 
 function resetActiveDocView() {
   state.activeKey = null;
+  state.secondaryKey = null;
+  state.isSplitMode = false;
+  state.activePane = "primary";
+  if (el.readerSplitWrapper) {
+    el.readerSplitWrapper.classList.remove("split");
+  }
+  if (el.secondaryPane) hide(el.secondaryPane);
+  if (el.primaryPane) {
+    el.primaryPane.classList.add("active");
+  }
   localStorage.removeItem("md-reader-active-key");
   hide(el.content);
+  hide(el.contentSecondary);
   hide(el.aiToolbar);
   hide(el.readAloudBtn);
   hide(el.speechRateSelect);
   hide(el.editBtn);
+  hide(el.splitModeBtn);
   hide(el.exportPdfBtn);
   hide(el.exportHtmlBtn);
   hide(el.readingStatsBar);
+  hide(el.readingStatsBarSecondary);
   hide(el.editorContainer);
   show(el.emptyState);
 }
@@ -238,14 +272,44 @@ function applyTheme() {
   document.documentElement.setAttribute("data-theme", state.theme);
   const metaTheme = document.querySelector('meta[name="theme-color"]');
   if (metaTheme) {
-    metaTheme.setAttribute("content", state.theme === "night" ? "#0a0c10" : "#f6f8fa");
+    const metaColors = {
+      night: "#0a0c10",
+      day: "#f6f8fa",
+      sepia: "#f4ecd8",
+      oled: "#000000",
+      forest: "#0f1914",
+      latte: "#f5f0eb",
+      frost: "#1e222b",
+      sakura: "#fff5f6"
+    };
+    metaTheme.setAttribute("content", metaColors[state.theme] || "#0a0c10");
   }
   const icon = document.getElementById("themeIcon");
   if (icon) {
-    icon.textContent = state.theme === "night" ? "🌙" : "☀️";
+    const icons = {
+      night: "🌙",
+      day: "☀️",
+      sepia: "🍵",
+      oled: "🖤",
+      forest: "🌲",
+      latte: "☕",
+      frost: "🧊",
+      sakura: "🌸"
+    };
+    icon.textContent = icons[state.theme] || "🌙";
   }
   localStorage.setItem("md-reader-theme", state.theme);
   
+  if (el.themePopover) {
+    el.themePopover.querySelectorAll(".theme-opt").forEach(opt => {
+      if (opt.dataset.theme === state.theme) {
+        opt.classList.add("active");
+      } else {
+        opt.classList.remove("active");
+      }
+    });
+  }
+
   if (typeof applyAccent === "function") {
     applyAccent(state.activeAccent);
   }
@@ -279,7 +343,8 @@ function applyAccent(accentName) {
   localStorage.setItem("md-reader-accent", state.activeAccent);
   
   const colors = ACCENT_COLORS[state.activeAccent] || ACCENT_COLORS.indigo;
-  const currentMode = state.theme === "night" ? "night" : "day";
+  const lightThemes = ["day", "sepia", "latte", "sakura"];
+  const currentMode = lightThemes.includes(state.theme) ? "day" : "night";
   const themeColors = colors[currentMode];
   
   document.documentElement.style.setProperty("--accent", themeColors.accent);
@@ -299,10 +364,77 @@ function applyAccent(accentName) {
   }
 }
 
-el.themeBtn.addEventListener("click", () => {
-  state.theme = state.theme === "night" ? "day" : "night";
-  applyTheme();
-});
+// Move theme popover to <body> so it escapes any stacking context
+if (el.themePopover) {
+  document.body.appendChild(el.themePopover);
+  el.themePopover.style.position = 'fixed';
+  el.themePopover.style.zIndex = '99999';
+}
+
+function positionThemePopover() {
+  if (!el.themeBtn || !el.themePopover) return;
+  const rect = el.themeBtn.getBoundingClientRect();
+  let top = rect.bottom + 8;
+  let right = window.innerWidth - rect.right;
+  if (right < 8) right = 8;
+  el.themePopover.style.top = top + 'px';
+  el.themePopover.style.right = right + 'px';
+  el.themePopover.style.left = 'auto';
+}
+
+if (el.themeBtn && el.themePopover) {
+  el.themeBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const visible = el.themePopover.style.display === "block";
+    if (visible) {
+      hide(el.themePopover);
+    } else {
+      positionThemePopover();
+      show(el.themePopover, 'block');
+    }
+  });
+
+  el.themeBtn.addEventListener("touchend", (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const visible = el.themePopover.style.display === "block";
+    if (visible) {
+      hide(el.themePopover);
+    } else {
+      positionThemePopover();
+      show(el.themePopover, 'block');
+    }
+  });
+
+  // Theme option clicks
+  el.themePopover.querySelectorAll(".theme-opt").forEach(opt => {
+    const handleOptClick = (e) => {
+      e.stopPropagation();
+      state.theme = opt.dataset.theme;
+      applyTheme();
+      hide(el.themePopover);
+    };
+    opt.addEventListener("click", handleOptClick);
+    opt.addEventListener("touchend", (e) => {
+      e.preventDefault();
+      handleOptClick(e);
+    });
+  });
+
+  // Close popover when tapping/clicking anywhere else
+  document.addEventListener("click", (e) => {
+    if (el.themePopover && !el.themePopover.contains(e.target) && !el.themeBtn.contains(e.target)) {
+      hide(el.themePopover);
+    }
+  });
+  document.addEventListener("touchstart", (e) => {
+    if (el.themePopover && el.themePopover.style.display === "block" &&
+        !el.themePopover.contains(e.target) && !el.themeBtn.contains(e.target)) {
+      hide(el.themePopover);
+    }
+  }, { passive: true });
+}
+
 applyTheme();
 
 /* ---------------- Accent Color Theme ---------------- */
@@ -393,6 +525,118 @@ el.fontDownBtn.addEventListener("click", () => {
   state.fontScale = Math.max(0.8, +(state.fontScale - 0.1).toFixed(2));
   applyFontScale();
 });
+
+/* ---------------- Typography & Line Spacing Settings ---------------- */
+function applyFontFamily(font) {
+  state.activeFont = font || "inter";
+  localStorage.setItem("md-reader-font-family", state.activeFont);
+  
+  // Remove existing font classes on documentElement
+  document.documentElement.classList.remove(
+    "font-family-inter", 
+    "font-family-roboto", 
+    "font-family-merriweather", 
+    "font-family-lexend", 
+    "font-family-dyslexic"
+  );
+  
+  // Add new font class
+  document.documentElement.classList.add(`font-family-${state.activeFont}`);
+  
+  if (el.fontFamilySelect) {
+    el.fontFamilySelect.value = state.activeFont;
+  }
+}
+
+function applyLineHeight(height) {
+  state.lineHeight = height || "1.6";
+  localStorage.setItem("md-reader-line-height", state.lineHeight);
+  document.documentElement.style.setProperty("--line-height", state.lineHeight);
+  
+  if (el.lineHeightSelect) {
+    el.lineHeightSelect.value = state.lineHeight;
+  }
+}
+
+// Move popover to body to prevent clipping
+if (el.fontSettingsPopover) {
+  document.body.appendChild(el.fontSettingsPopover);
+  el.fontSettingsPopover.style.position = 'fixed';
+  el.fontSettingsPopover.style.zIndex = '99999';
+}
+
+function positionFontSettingsPopover() {
+  if (!el.fontSettingsBtn || !el.fontSettingsPopover) return;
+  const rect = el.fontSettingsBtn.getBoundingClientRect();
+  let top = rect.bottom + 8;
+  let right = window.innerWidth - rect.right;
+  if (right < 8) right = 8;
+  el.fontSettingsPopover.style.top = top + 'px';
+  el.fontSettingsPopover.style.right = right + 'px';
+  el.fontSettingsPopover.style.left = 'auto';
+}
+
+if (el.fontSettingsBtn && el.fontSettingsPopover) {
+  el.fontSettingsBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const visible = el.fontSettingsPopover.style.display === "block";
+    if (visible) {
+      hide(el.fontSettingsPopover);
+    } else {
+      positionFontSettingsPopover();
+      show(el.fontSettingsPopover, 'block');
+    }
+  });
+
+  el.fontSettingsBtn.addEventListener("touchend", (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const visible = el.fontSettingsPopover.style.display === "block";
+    if (visible) {
+      hide(el.fontSettingsPopover);
+    } else {
+      positionFontSettingsPopover();
+      show(el.fontSettingsPopover, 'block');
+    }
+  });
+
+  // Prevent closing popover when clicking inside it
+  el.fontSettingsPopover.addEventListener("click", (e) => {
+    e.stopPropagation();
+  });
+  el.fontSettingsPopover.addEventListener("touchstart", (e) => {
+    e.stopPropagation();
+  }, { passive: true });
+
+  if (el.fontFamilySelect) {
+    el.fontFamilySelect.addEventListener("change", (e) => {
+      applyFontFamily(e.target.value);
+    });
+  }
+
+  if (el.lineHeightSelect) {
+    el.lineHeightSelect.addEventListener("change", (e) => {
+      applyLineHeight(e.target.value);
+    });
+  }
+
+  // Close popover when clicking outside
+  document.addEventListener("click", (e) => {
+    if (el.fontSettingsPopover && !el.fontSettingsPopover.contains(e.target) && !el.fontSettingsBtn.contains(e.target)) {
+      hide(el.fontSettingsPopover);
+    }
+  });
+  document.addEventListener("touchstart", (e) => {
+    if (el.fontSettingsPopover && el.fontSettingsPopover.style.display === "block" &&
+        !el.fontSettingsPopover.contains(e.target) && !el.fontSettingsBtn.contains(e.target)) {
+      hide(el.fontSettingsPopover);
+    }
+  }, { passive: true });
+}
+
+// Initial typography application
+applyFontFamily(state.activeFont);
+applyLineHeight(state.lineHeight);
 
 /* ---------------- Mobile drawer ---------------- */
 function openSidebar() {
@@ -939,9 +1183,16 @@ el.searchInput.addEventListener("input", (e) => {
 
 /* ---------------- Open + render a markdown file ---------------- */
 async function openFile(key) {
-  state.activeKey = key;
+  const isSecondary = state.isSplitMode && state.activePane === "secondary";
+  
+  if (isSecondary) {
+    state.secondaryKey = key;
+  } else {
+    state.activeKey = key;
+    localStorage.setItem("md-reader-active-key", key);
+  }
+  
   state.isGeneralChatActive = false;
-  localStorage.setItem("md-reader-active-key", key);
   closeSidebar();
   
   // Stop speaking on file change
@@ -971,19 +1222,23 @@ async function openFile(key) {
   el.searchDocInput.value = "";
   originalContentHtml = ""; // Reset cached original HTML
   
-  // Update active file class dynamically in the DOM instead of re-rendering the whole tree
+  // Update active file class dynamically in the DOM
   el.fileList.querySelectorAll(".file-item").forEach((item) => {
-    if (item.dataset.key === key) {
+    const itemKey = item.dataset.key;
+    if (itemKey === state.activeKey || (state.isSplitMode && itemKey === state.secondaryKey)) {
       item.classList.add("active");
     } else {
       item.classList.remove("active");
     }
   });
 
+  const targetContent = isSecondary ? el.contentSecondary : el.content;
+  const targetStatsBar = isSecondary ? el.readingStatsBarSecondary : el.readingStatsBar;
+
   hide(el.emptyState);
-  show(el.content);
+  show(targetContent);
   
-  el.content.innerHTML = `<div style="text-align:center;padding:40px;color:var(--text-muted)">
+  targetContent.innerHTML = `<div style="text-align:center;padding:40px;color:var(--text-muted)">
     <div class="loading-dots" style="display:flex;gap:4px;justify-content:center;margin-bottom:12px">
       <span></span><span></span><span></span>
     </div>
@@ -994,13 +1249,13 @@ async function openFile(key) {
     const res = await fetch(`/api/file?key=${encodeURIComponent(key)}`, { cache: "no-store" });
     if (!res.ok) throw new Error("File not found");
     const mdText = await res.text();
-    el.content.innerHTML = marked.parse(mdText);
+    targetContent.innerHTML = marked.parse(mdText);
     
     // Clean string helper: keeps only letters & digits for robust comparison
     const cleanStr = (s) => (s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
 
     // Assign IDs & data attributes to all headings
-    el.content.querySelectorAll('h1, h2, h3, h4, h5, h6').forEach(heading => {
+    targetContent.querySelectorAll('h1, h2, h3, h4, h5, h6').forEach(heading => {
       const text = heading.textContent.trim();
       const slug = text
         .toLowerCase()
@@ -1017,7 +1272,7 @@ async function openFile(key) {
     });
     
     if (window.renderMathInElement) {
-      renderMathInElement(el.content, {
+      renderMathInElement(targetContent, {
         delimiters: [
           {left: "$$", right: "$$", display: true},
           {left: "$", right: "$", display: false}
@@ -1032,18 +1287,20 @@ async function openFile(key) {
     show(el.speechRateSelect, 'inline-block');
     el.speechRateSelect.value = state.speechRate;
     show(el.editBtn, 'flex');
+    show(el.splitModeBtn, 'flex');
     show(el.exportPdfBtn, 'flex');
     show(el.exportHtmlBtn, 'flex');
-    show(el.readingStatsBar, 'flex');
+    show(targetStatsBar, 'flex');
     hide(el.editorContainer);
     
-    updateReadingStats(mdText);
+    if (isSecondary) {
+      updateReadingStatsSecondary(mdText);
+    } else {
+      updateReadingStats(mdText);
+      buildTOC();
+      highlights.restoreHighlights();
+    }
     
-    // Build TOC
-    buildTOC();
-    
-    // Restore text highlights & show notes button
-    highlights.restoreHighlights();
     const notesToggleBtn = document.getElementById('notesToggleBtn');
     if (notesToggleBtn) show(notesToggleBtn, 'flex');
     document.getElementById('marginNotesPanel').style.display = 'none';
@@ -1057,7 +1314,7 @@ async function openFile(key) {
     
     document.querySelector(".reader").scrollTop = 0;
   } catch (err) {
-    el.content.innerHTML = `<p style="color:var(--error)">⚠️ Could not load file: ${err.message}</p>`;
+    targetContent.innerHTML = `<p style="color:var(--error)">⚠️ Could not load file: ${err.message}</p>`;
   }
 }
 
@@ -2048,6 +2305,20 @@ function updateReadingStats(text) {
   
   el.wordCountText.textContent = `${words} word${words === 1 ? '' : 's'}`;
   el.readingTimeText.textContent = `${readingTime} min read`;
+}
+
+function updateReadingStatsSecondary(text) {
+  if (!text) {
+    el.wordCountTextSecondary.textContent = "0 words";
+    el.readingTimeTextSecondary.textContent = "0 min read";
+    return;
+  }
+  const cleanText = text.trim();
+  const words = cleanText ? cleanText.split(/\s+/).length : 0;
+  const readingTime = Math.max(1, Math.round(words / 200));
+  
+  el.wordCountTextSecondary.textContent = `${words} word${words === 1 ? '' : 's'}`;
+  el.readingTimeTextSecondary.textContent = `${readingTime} min read`;
 }
 
 /* ---------------- Inline Editing & Auto-Save ---------------- */
@@ -3641,6 +3912,81 @@ const highlights = {
   }
 };
 
+/* ================================================================
+   4. SPLIT SCREEN DUAL READER
+   ================================================================ */
+const splitScreen = {
+  init() {
+    if (el.splitModeBtn) {
+      el.splitModeBtn.addEventListener("click", () => {
+        this.toggle();
+      });
+    }
+
+    if (el.primaryPane) {
+      el.primaryPane.addEventListener("click", () => {
+        this.setActivePane("primary");
+      });
+    }
+    if (el.secondaryPane) {
+      el.secondaryPane.addEventListener("click", () => {
+        this.setActivePane("secondary");
+      });
+    }
+  },
+
+  toggle() {
+    state.isSplitMode = !state.isSplitMode;
+    
+    if (state.isSplitMode) {
+      el.splitModeBtn.classList.add("active");
+      el.readerSplitWrapper.classList.add("split");
+      show(el.secondaryPane);
+      
+      // If there's no secondary file loaded yet, load current one or display instructions
+      if (!state.secondaryKey) {
+        el.contentSecondary.innerHTML = `<div style="text-align:center;padding:40px;color:var(--text-dim)">
+          <h3>Secondary Reading Pane</h3>
+          <p style="font-size:0.85rem;margin-top:8px">Select any file from the sidebar to open it here.</p>
+        </div>`;
+        show(el.contentSecondary);
+      }
+      
+      // Focus on secondary pane to invite user selection
+      this.setActivePane("secondary");
+    } else {
+      el.splitModeBtn.classList.remove("active");
+      el.readerSplitWrapper.classList.remove("split");
+      hide(el.secondaryPane);
+      hide(el.contentSecondary);
+      hide(el.readingStatsBarSecondary);
+      
+      state.secondaryKey = null;
+      this.setActivePane("primary");
+      
+      // Update sidebar file highlights to single activeKey
+      el.fileList.querySelectorAll(".file-item").forEach((item) => {
+        if (item.dataset.key === state.activeKey) {
+          item.classList.add("active");
+        } else {
+          item.classList.remove("active");
+        }
+      });
+    }
+  },
+
+  setActivePane(pane) {
+    state.activePane = pane;
+    if (pane === "primary") {
+      el.primaryPane.classList.add("active");
+      if (el.secondaryPane) el.secondaryPane.classList.remove("active");
+    } else {
+      if (el.secondaryPane) el.secondaryPane.classList.add("active");
+      el.primaryPane.classList.remove("active");
+    }
+  }
+};
+
 /* ---------------- Init ---------------- */
 async function initApp() {
   try {
@@ -3669,6 +4015,7 @@ async function initApp() {
   gamification.init();
   autoGlossary.init();
   topicFocus.init();
+  splitScreen.init();
 
   // Global event delegation for in-page anchor links in the Markdown content
   el.content.addEventListener('click', (e) => {
@@ -3742,6 +4089,67 @@ async function initApp() {
       }, 1000);
     }
   });
+
+  if (el.contentSecondary) {
+    el.contentSecondary.addEventListener('click', (e) => {
+      const link = e.target.closest('a[href*="#"]');
+      if (!link) return;
+
+      const href = link.getAttribute('href') || '';
+      const hashIdx = href.indexOf('#');
+      if (hashIdx === -1) return;
+
+      const targetId = decodeURIComponent(href.slice(hashIdx + 1)).trim();
+      if (!targetId && href === '#') return;
+
+      e.preventDefault();
+
+      const linkText = link.textContent.trim();
+      const clean = (s) => (s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+      const targetClean = clean(targetId);
+      const linkTextClean = clean(linkText);
+
+      const allHeadings = Array.from(el.contentSecondary.querySelectorAll('h1, h2, h3, h4, h5, h6'));
+
+      let target = targetId ? el.contentSecondary.querySelector(`#${CSS.escape(targetId)}`) : null;
+
+      if (!target && targetClean) {
+        target = allHeadings.find(h => {
+          const hc = clean(h.id);
+          const ht = clean(h.textContent);
+          const hcn = h.dataset.cleanTextNoNum || '';
+          return hc === targetClean || ht === targetClean || hcn === targetClean;
+        });
+      }
+
+      if (!target && targetClean) {
+        target = allHeadings.find(h => {
+          const hc = clean(h.id);
+          const ht = clean(h.textContent);
+          const hcn = h.dataset.cleanTextNoNum || '';
+          return (
+            ht.endsWith(targetClean) ||
+            targetClean.endsWith(ht) ||
+            hcn.endsWith(targetClean) ||
+            targetClean.endsWith(hcn) ||
+            hc.endsWith(targetClean) ||
+            targetClean.endsWith(hc)
+          );
+        });
+      }
+
+      if (target) {
+        target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+        const origBg = target.style.backgroundColor;
+        target.style.transition = 'background-color 0.4s ease';
+        target.style.backgroundColor = 'var(--bg-hover)';
+        setTimeout(() => {
+          target.style.backgroundColor = origBg;
+        }, 1000);
+      }
+    });
+  }
 
   const savedActiveKey = localStorage.getItem("md-reader-active-key");
   if (savedActiveKey && state.files.some((f) => f.key === savedActiveKey)) {

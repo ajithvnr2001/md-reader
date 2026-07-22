@@ -40,8 +40,10 @@
 
 ---
 
-### 🎨 Customization & Accessibility
-- **Day / Night Themes**: Instant toggle between Dark Mode and Light Mode.
+### 🎨 Customization, Layout & Accessibility
+- **8 Premium Eye-Care Themes**: Choose from Night 🌙, Day ☀️, Sepia 🍵, OLED Black 🖤, Forest Sage 🌲, Cafe Latte ☕, Nord Frost 🧊, and Sakura Rose 🌸 via the new theme selection popover.
+- **🔤 Typography & Line Spacing Settings**: Customize font family (Inter, Roboto, Merriweather Serif, Lexend, OpenDyslexic) and line height (1.4x, 1.6x, 1.8x, 2.0x).
+- **📐 Split-Screen Dual Reader**: Compare two Markdown notes side-by-side on desktop/tablets, with adaptive vertical stacking on mobile viewports.
 - **Dynamic Accent Color Picker**: Select custom HSL color accents (Indigo, Emerald, Sky, Rose, Amber) with fixed mobile-ready popovers.
 - **Adjustable Typography**: Font size scaling controls (A+ / A-) for comfortable reading on any screen size.
 - **Mobile Responsive Layout**: Optimized touch targets, swipeable bars, and adaptive popovers for ultra-narrow mobile viewports.

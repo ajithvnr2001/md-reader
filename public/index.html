@@ -8,7 +8,8 @@
 <title>MD Reader — AI-Powered Study Notes</title>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Roboto:wght@400;500;700&family=Merriweather:ital,wght@0,300;0,400;0,700;1,300&family=Lexend:wght@400;500;700&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/open-dyslexic@1.0.3/open-dyslexic.min.css" />
 <link rel="stylesheet" href="/style.css" />
 <link rel="manifest" href="/manifest.json" />
 <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -46,6 +47,11 @@
         <!-- Edit Document -->
         <button id="editBtn" class="icon-btn" title="Edit Document" style="display:none;padding:6px">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+        </button>
+
+        <!-- Split Mode Toggle -->
+        <button id="splitModeBtn" class="icon-btn" title="Toggle Split Screen Comparison" style="display:none;padding:6px">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="12" y1="3" x2="12" y2="21"/></svg>
         </button>
 
         <!-- Notes Panel Toggle -->
@@ -103,9 +109,72 @@
           <span id="levelDisplay">⚡ Lvl 1</span>
         </button>
 
-        <button id="themeBtn" class="theme-btn" aria-label="Toggle day/night theme" title="Toggle theme">
-          <span class="theme-icon" id="themeIcon">🌙</span>
-        </button>
+        <!-- Font Settings Toggle -->
+        <div style="position:relative">
+          <button id="fontSettingsBtn" class="icon-btn" title="Font & Line Spacing" style="padding:6px">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="4 7 4 4 20 4 20 7"/><line x1="9" y1="20" x2="15" y2="20"/><line x1="12" y1="4" x2="12" y2="20"/></svg>
+          </button>
+          <div id="fontSettingsPopover" class="font-settings-popover" style="display:none">
+            <div class="font-settings-popover-title">Typography Settings</div>
+            
+            <div class="font-setting-group">
+              <label for="fontFamilySelect" style="display:block; font-size:0.75rem; font-weight:600; color:var(--text-dim); margin-bottom:4px">Font Family</label>
+              <select id="fontFamilySelect" style="width:100%; padding:6px; font-size:0.8rem; background:var(--bg-elevated); color:var(--text); border:1px solid var(--border); border-radius:var(--radius); outline:none">
+                <option value="inter">Inter (Sans-Serif)</option>
+                <option value="roboto">Roboto (Clean Sans)</option>
+                <option value="merriweather">Merriweather (Serif)</option>
+                <option value="lexend">Lexend (Accessible)</option>
+                <option value="dyslexic">OpenDyslexic (Dyslexic-friendly)</option>
+              </select>
+            </div>
+            
+            <div class="font-setting-group" style="margin-top:10px">
+              <label for="lineHeightSelect" style="display:block; font-size:0.75rem; font-weight:600; color:var(--text-dim); margin-bottom:4px">Line Spacing</label>
+              <select id="lineHeightSelect" style="width:100%; padding:6px; font-size:0.8rem; background:var(--bg-elevated); color:var(--text); border:1px solid var(--border); border-radius:var(--radius); outline:none">
+                <option value="1.4">Compact (1.4)</option>
+                <option value="1.6">Normal (1.6)</option>
+                <option value="1.8">Relaxed (1.8)</option>
+                <option value="2.0">Double (2.0)</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <!-- Theme Settings Toggle -->
+        <div style="position:relative">
+          <button id="themeBtn" class="theme-btn" aria-label="Choose Reader Theme" title="Choose Theme" style="padding:6px">
+            <span class="theme-icon" id="themeIcon">🌙</span>
+          </button>
+          <div id="themePopover" class="theme-popover" style="display:none">
+            <div class="theme-popover-title">Choose Theme</div>
+            <div class="theme-picker-grid">
+              <button class="theme-opt active" data-theme="night" title="Night Mode">
+                <span class="theme-opt-icon">🌙</span> Night
+              </button>
+              <button class="theme-opt" data-theme="day" title="Day Mode">
+                <span class="theme-opt-icon">☀️</span> Day
+              </button>
+              <button class="theme-opt" data-theme="sepia" title="Sepia Mode">
+                <span class="theme-opt-icon">🍵</span> Sepia
+              </button>
+              <button class="theme-opt" data-theme="oled" title="OLED Black">
+                <span class="theme-opt-icon">🖤</span> OLED
+              </button>
+              <button class="theme-opt" data-theme="forest" title="Forest Sage">
+                <span class="theme-opt-icon">🌲</span> Forest
+              </button>
+              <button class="theme-opt" data-theme="latte" title="Cafe Latte">
+                <span class="theme-opt-icon">☕</span> Latte
+              </button>
+              <button class="theme-opt" data-theme="frost" title="Nord Frost">
+                <span class="theme-opt-icon">🧊</span> Frost
+              </button>
+              <button class="theme-opt" data-theme="sakura" title="Sakura Rose">
+                <span class="theme-opt-icon">🌸</span> Sakura
+              </button>
+            </div>
+          </div>
+        </div>
       </div>
     </header>
 
@@ -162,26 +231,49 @@
             </button>
           </div>
         </div>
-        <!-- Reading stats -->
-        <div id="readingStatsBar" style="display:none; max-width:740px; margin:0 auto 16px; font-size:0.82rem; color:var(--text-dim); align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px">
-          <div style="display:flex; align-items:center; gap:8px">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-            <span id="wordCountText">0 words</span>
-            <span>•</span>
-            <span id="readingTimeText">0 min read</span>
+        <!-- Reader view container -->
+        <div id="readerSplitWrapper" class="reader-split-wrapper" style="width:100%; height:100%; display:block">
+          
+          <!-- Primary Pane -->
+          <div id="primaryPane" class="split-pane active" style="width:100%; height:100%">
+            <!-- Reading stats -->
+            <div id="readingStatsBar" style="display:none; max-width:740px; margin:0 auto 16px; font-size:0.82rem; color:var(--text-dim); align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px">
+              <div style="display:flex; align-items:center; gap:8px">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                <span id="wordCountText">0 words</span>
+                <span>•</span>
+                <span id="readingTimeText">0 min read</span>
+              </div>
+
+              <!-- 🎯 Concept Focus Mode Bar -->
+              <div id="focusModeBar" style="display:flex; align-items:center; gap:6px; background:var(--bg-elevated); padding:3px 8px; border-radius:var(--radius); border:1px solid var(--border)">
+                <button id="focusToggleBtn" style="background:none; border:none; color:var(--accent); cursor:pointer; font-size:0.8rem; font-weight:600; display:flex; align-items:center; gap:4px">
+                  🎯 Topic Focus
+                </button>
+                <input type="text" id="focusInput" placeholder="Filter concept..." style="display:none; width:130px; padding:3px 6px; font-size:0.75rem; background:var(--bg-card); color:var(--text); border:1px solid var(--border); border-radius:4px; outline:none" />
+                <button id="focusClearBtn" style="display:none; background:none; border:none; color:var(--text-dim); cursor:pointer; font-size:0.75rem">✕</button>
+              </div>
+            </div>
+
+            <article id="content" class="markdown-body" style="display:none"></article>
           </div>
 
-          <!-- 🎯 Concept Focus Mode Bar -->
-          <div id="focusModeBar" style="display:flex; align-items:center; gap:6px; background:var(--bg-elevated); padding:3px 8px; border-radius:var(--radius); border:1px solid var(--border)">
-            <button id="focusToggleBtn" style="background:none; border:none; color:var(--accent); cursor:pointer; font-size:0.8rem; font-weight:600; display:flex; align-items:center; gap:4px">
-              🎯 Topic Focus
-            </button>
-            <input type="text" id="focusInput" placeholder="Filter concept..." style="display:none; width:130px; padding:3px 6px; font-size:0.75rem; background:var(--bg-card); color:var(--text); border:1px solid var(--border); border-radius:4px; outline:none" />
-            <button id="focusClearBtn" style="display:none; background:none; border:none; color:var(--text-dim); cursor:pointer; font-size:0.75rem">✕</button>
+          <!-- Secondary Pane -->
+          <div id="secondaryPane" class="split-pane" style="display:none; width:100%; height:100%">
+            <!-- Reading stats secondary -->
+            <div id="readingStatsBarSecondary" style="display:none; max-width:740px; margin:0 auto 16px; font-size:0.82rem; color:var(--text-dim); align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px">
+              <div style="display:flex; align-items:center; gap:8px">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                <span id="wordCountTextSecondary">0 words</span>
+                <span>•</span>
+                <span id="readingTimeTextSecondary">0 min read</span>
+              </div>
+            </div>
+
+            <article id="contentSecondary" class="markdown-body" style="display:none"></article>
           </div>
+
         </div>
-
-        <article id="content" class="markdown-body" style="display:none"></article>
 
         <!-- Inline Editor Container -->
         <div id="editorContainer" style="display:none; max-width:740px; margin:0 auto; flex-direction:column; gap:12px; height:100%">

@@ -254,6 +254,24 @@ const glossarySchema = {
   required: ["terms"]
 };
 
+const flashcardsSchema = {
+  type: "OBJECT",
+  properties: {
+    flashcards: {
+      type: "ARRAY",
+      items: {
+        type: "OBJECT",
+        properties: {
+          question: { type: "STRING", description: "The term or question on the front of the card." },
+          answer: { type: "STRING", description: "A clear, short definition or answer on the back of the card." }
+        },
+        required: ["question", "answer"]
+      }
+    }
+  },
+  required: ["flashcards"]
+};
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);

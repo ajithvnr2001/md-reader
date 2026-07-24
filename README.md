@@ -41,7 +41,9 @@
 ---
 
 ### 🎨 Customization, Layout & Accessibility
-- **8 Premium Eye-Care Themes**: Choose from Night 🌙, Day ☀️, Sepia 🍵, OLED Black 🖤, Forest Sage 🌲, Cafe Latte ☕, Nord Frost 🧊, and Sakura Rose 🌸 via the new theme selection popover.
+- **🎯 Focus / Zen Mode & Typewriter Scrolling**: Full-screen, distraction-free reading environment that hides UI chrome and toolbars. Features active-paragraph focus with smooth scrolling and dimming of non-active text.
+- **↔️ Resizable & Expandable AI Side Panel**: Smooth drag-to-resize handle on desktop (300px to 85vw width) plus a one-click ↔️ expand/shrink toggle button for full-width workspace analysis.
+- **8 Premium Eye-Care Themes**: Choose from Night 🌙, Day ☀️, Sepia 🍵, OLED Black 🖤, Forest Sage 🌲, Cafe Latte ☕, Nord Frost 🧊, and Sakura Rose 🌸 via the theme selection popover.
 - **🔤 Typography & Line Spacing Settings**: Customize font family (Inter, Roboto, Merriweather Serif, Lexend, OpenDyslexic) and line height (1.4x, 1.6x, 1.8x, 2.0x).
 - **📐 Split-Screen Dual Reader**: Compare two Markdown notes side-by-side on desktop/tablets, with adaptive vertical stacking on mobile viewports.
 - **Dynamic Accent Color Picker**: Select custom HSL color accents (Indigo, Emerald, Sky, Rose, Amber) with fixed mobile-ready popovers.

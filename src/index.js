@@ -272,6 +272,28 @@ const flashcardsSchema = {
   required: ["flashcards"]
 };
 
+const translateSchema = {
+  type: "OBJECT",
+  properties: {
+    targetLanguage: { type: "STRING", description: "Target language name" },
+    translatedTitle: { type: "STRING", description: "Meaningful title in target language" },
+    contextualSummary: { type: "STRING", description: "Fluent, domain-accurate contextual translation summary in markdown format" },
+    keyTerms: {
+      type: "ARRAY",
+      items: {
+        type: "OBJECT",
+        properties: {
+          originalTerm: { type: "STRING" },
+          translatedTerm: { type: "STRING" },
+          contextNote: { type: "STRING", description: "Why this term is translated this way in context" }
+        },
+        required: ["originalTerm", "translatedTerm", "contextNote"]
+      }
+    }
+  },
+  required: ["targetLanguage", "translatedTitle", "contextualSummary", "keyTerms"]
+};
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
@@ -611,6 +633,26 @@ ${docContext}Target Paragraph:
       } catch (err) {
         console.error("Glossary error:", err);
         return json({ error: err.message || "Gemini glossary failed" }, 500);
+      }
+    }
+
+    // ---- API: Gemini — context-aware translation ----
+    if (pathname === "/api/ai/translate" && request.method === "POST") {
+      try {
+        const { key, targetLanguage = "Spanish" } = await request.json();
+        const text = await getMarkdownText(env, key);
+        if (text === null) return json({ error: "File not found" }, 404);
+
+        const systemInstruction = `You are an expert technical translator specializing in domain-accurate, highly natural context-aware translations. 
+Translate the provided study note into ${targetLanguage}. 
+DO NOT do literal word-for-word translation. Preserve technical terms, code syntax, formulas, and domain jargon with meaningful context notes explaining how terms translate in this domain.`;
+        const messages = [{ role: "user", content: `Please translate the following document context meaningfully into ${targetLanguage}:\n\n${truncateForModel(text, 10000)}` }];
+
+        const responseText = await runGemini(env, messages, systemInstruction, "application/json", translateSchema);
+        return json(JSON.parse(responseText));
+      } catch (err) {
+        console.error("Translation error:", err);
+        return json({ error: err.message || "Gemini translation failed" }, 500);
       }
     }
 

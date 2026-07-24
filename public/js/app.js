@@ -214,6 +214,7 @@ const el = {
   gamiBadgesGrid: document.getElementById("gamiBadgesGrid"),
 
   autoGlossaryBtn: document.getElementById("autoGlossaryBtn"),
+  translateBtn: document.getElementById("translateBtn"),
 
   focusToggleBtn: document.getElementById("focusToggleBtn"),
   focusInput: document.getElementById("focusInput"),
@@ -3252,6 +3253,157 @@ const autoGlossary = {
 };
 
 /* ================================================================
+   AI CONTEXT-AWARE TRANSLATOR
+   ================================================================ */
+const aiTranslator = {
+  languages: [
+    { code: "Spanish", name: "Spanish 🇪🇸" },
+    { code: "French", name: "French 🇫🇷" },
+    { code: "German", name: "German 🇩🇪" },
+    { code: "Hindi", name: "Hindi 🇮🇳" },
+    { code: "Japanese", name: "Japanese 🇯🇵" },
+    { code: "Chinese", name: "Chinese (Simplified) 🇨🇳" },
+    { code: "Tamil", name: "Tamil 🇮🇳" },
+    { code: "Portuguese", name: "Portuguese 🇵🇹" },
+    { code: "Italian", name: "Italian 🇮🇹" },
+    { code: "Russian", name: "Russian 🇷🇺" }
+  ],
+
+  init() {
+    if (el.translateBtn) {
+      el.translateBtn.addEventListener('click', () => {
+        this.openLanguagePicker();
+      });
+    }
+  },
+
+  openLanguagePicker() {
+    if (!state.activeKey) return;
+    
+    openAiPanel("🌐 AI Contextual Translation", false, 'translate');
+    
+    let langButtonsHtml = this.languages.map(l => 
+      `<button class="btn-secondary lang-select-btn" data-lang="${l.code}" style="padding:8px 12px; font-size:0.85rem; background:var(--bg-card); border:1px solid var(--border); border-radius:var(--radius); color:var(--text); cursor:pointer; text-align:left; transition:all 0.2s">
+        ${l.name}
+      </button>`
+    ).join('');
+
+    el.aiPanelContent.innerHTML = `
+      <div style="padding:16px; display:flex; flex-direction:column; gap:16px">
+        <div>
+          <h3 style="margin:0 0 6px; font-size:1.05rem">Select Target Language</h3>
+          <p style="margin:0; font-size:0.82rem; color:var(--text-dim)">
+            Provides a domain-accurate, contextual translation preserving code, formulas, and technical terminology.
+          </p>
+        </div>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px">
+          ${langButtonsHtml}
+        </div>
+      </div>
+    `;
+
+    const buttons = el.aiPanelContent.querySelectorAll('.lang-select-btn');
+    buttons.forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        const selectedLang = e.currentTarget.getAttribute('data-lang');
+        this.performTranslation(selectedLang);
+      });
+    });
+  },
+
+  async performTranslation(targetLanguage) {
+    openAiPanel(`🌐 Translating to ${targetLanguage}...`, false, 'translate');
+    show(el.aiSpinner, 'flex');
+
+    try {
+      const res = await fetch("/api/ai/translate", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ key: state.activeKey, targetLanguage })
+      });
+
+      hide(el.aiSpinner);
+
+      if (!res.ok) throw new Error(`Server returned ${res.status}`);
+      const data = await res.json();
+
+      this.renderTranslationResult(data);
+      gamification.awardXp(15, 'translate');
+    } catch(err) {
+      hide(el.aiSpinner);
+      el.aiPanelContent.innerHTML = `
+        <div style="padding:16px; background:rgba(248,81,73,0.08); border:1px solid var(--error); border-radius:var(--radius); color:var(--error)">
+          <strong>Translation Failed:</strong> ${err.message}
+        </div>
+      `;
+    }
+  },
+
+  renderTranslationResult(data) {
+    let termsTableHtml = '';
+    if (data.keyTerms && data.keyTerms.length) {
+      const rows = data.keyTerms.map(t => `
+        <tr style="border-bottom:1px solid var(--border)">
+          <td style="padding:8px 10px; font-weight:600; color:var(--accent); font-size:0.85rem">${t.originalTerm}</td>
+          <td style="padding:8px 10px; font-weight:600; font-size:0.85rem">${t.translatedTerm}</td>
+          <td style="padding:8px 10px; font-size:0.8rem; color:var(--text-dim)">${t.contextNote}</td>
+        </tr>
+      `).join('');
+
+      termsTableHtml = `
+        <div style="margin-top:20px">
+          <h4 style="margin:0 0 10px; font-size:0.95rem; display:flex; align-items:center; gap:6px">
+            <span>📚 Contextual Technical Vocabulary</span>
+          </h4>
+          <div style="overflow-x:auto; border:1px solid var(--border); border-radius:var(--radius); background:var(--bg-card)">
+            <table style="width:100%; border-collapse:collapse; text-align:left">
+              <thead>
+                <tr style="background:var(--bg-elevated); border-bottom:1px solid var(--border); font-size:0.78rem; color:var(--text-dim)">
+                  <th style="padding:8px 10px">Original Term</th>
+                  <th style="padding:8px 10px">Translation</th>
+                  <th style="padding:8px 10px">Domain Context Note</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${rows}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      `;
+    }
+
+    const htmlContent = marked.parse(data.contextualSummary || "");
+
+    el.aiPanelContent.innerHTML = `
+      <div style="padding:16px">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; padding-bottom:10px; border-bottom:1px solid var(--border)">
+          <span style="font-size:0.82rem; font-weight:700; color:var(--accent); text-transform:uppercase; letter-spacing:0.05em">
+            🌐 ${data.targetLanguage} Translation
+          </span>
+          <button id="reSelectLangBtn" class="btn-secondary" style="padding:4px 10px; font-size:0.75rem; background:var(--bg-card); border:1px solid var(--border); border-radius:var(--radius); color:var(--text); cursor:pointer">
+            Change Language
+          </button>
+        </div>
+
+        <h2 style="margin:0 0 12px; font-size:1.2rem">${data.translatedTitle || "Translated Summary"}</h2>
+        <div class="markdown-body" style="font-size:0.92rem; line-height:1.7">
+          ${htmlContent}
+        </div>
+
+        ${termsTableHtml}
+      </div>
+    `;
+
+    const reSelectBtn = el.aiPanelContent.querySelector('#reSelectLangBtn');
+    if (reSelectBtn) {
+      reSelectBtn.addEventListener('click', () => this.openLanguagePicker());
+    }
+  }
+};
+
+
+/* ================================================================
    3. TOPIC FOCUS MODE (CONCEPT ISOLATION)
    ================================================================ */
 const topicFocus = {
@@ -4145,6 +4297,7 @@ async function initApp() {
   highlights.init();
   gamification.init();
   autoGlossary.init();
+  aiTranslator.init();
   topicFocus.init();
   splitScreen.init();
 

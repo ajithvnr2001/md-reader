@@ -64,6 +64,10 @@ const el = {
   quizBtn: document.getElementById("quizBtn"),
   flashcardsBtn: document.getElementById("flashcardsBtn"),
   aiPanelClose: document.getElementById("aiPanelClose"),
+  aiPanelResizeHandle: document.getElementById("aiPanelResizeHandle"),
+  aiPanelExpandBtn: document.getElementById("aiPanelExpandBtn"),
+  zenModeBtn: document.getElementById("zenModeBtn"),
+  exitZenBtn: document.getElementById("exitZenBtn"),
   
   // Upload modal refs
   uploadToggleBtn: document.getElementById("uploadToggleBtn"),
@@ -1634,6 +1638,133 @@ function closeAiPanel() {
   }
 }
 el.aiPanelClose.addEventListener("click", closeAiPanel);
+
+/* ---------- AI Panel Resize & Expand/Collapse ---------- */
+(function initPanelResize() {
+  const panel = el.aiPanel;
+  const handle = el.aiPanelResizeHandle;
+  const expandBtn = el.aiPanelExpandBtn;
+  const DEFAULT_WIDTH = 420;
+  const EXPANDED_WIDTH_VW = 65;
+  let isExpanded = false;
+  let isDragging = false;
+  let startX = 0;
+  let startWidth = 0;
+
+  // SVG icons for expand and shrink
+  const expandIcon = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>';
+  const shrinkIcon = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 14 10 14 10 20"/><polyline points="20 10 14 10 14 4"/><line x1="14" y1="10" x2="21" y2="3"/><line x1="3" y1="21" x2="10" y2="14"/></svg>';
+
+  // Drag to resize
+  handle.addEventListener('mousedown', function(e) {
+    if (window.innerWidth < 900) return;
+    isDragging = true;
+    startX = e.clientX;
+    startWidth = panel.offsetWidth;
+    panel.classList.add('resizing');
+    panel.classList.remove('smooth-resize');
+    handle.classList.add('dragging');
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+    e.preventDefault();
+  });
+
+  document.addEventListener('mousemove', function(e) {
+    if (!isDragging) return;
+    const dx = startX - e.clientX;
+    let newWidth = startWidth + dx;
+    const minW = 300;
+    const maxW = window.innerWidth * 0.85;
+    newWidth = Math.max(minW, Math.min(maxW, newWidth));
+    panel.style.width = newWidth + 'px';
+    // If user drags, we're no longer in the css-class-expanded state
+    isExpanded = false;
+    panel.classList.remove('expanded');
+    expandBtn.innerHTML = expandIcon;
+    expandBtn.title = 'Expand panel';
+  });
+
+  document.addEventListener('mouseup', function() {
+    if (!isDragging) return;
+    isDragging = false;
+    panel.classList.remove('resizing');
+    handle.classList.remove('dragging');
+    document.body.style.cursor = '';
+    document.body.style.userSelect = '';
+  });
+
+  // Touch support for resize
+  handle.addEventListener('touchstart', function(e) {
+    if (window.innerWidth < 900) return;
+    const touch = e.touches[0];
+    isDragging = true;
+    startX = touch.clientX;
+    startWidth = panel.offsetWidth;
+    panel.classList.add('resizing');
+    panel.classList.remove('smooth-resize');
+    handle.classList.add('dragging');
+    e.preventDefault();
+  }, { passive: false });
+
+  document.addEventListener('touchmove', function(e) {
+    if (!isDragging) return;
+    const touch = e.touches[0];
+    const dx = startX - touch.clientX;
+    let newWidth = startWidth + dx;
+    const minW = 300;
+    const maxW = window.innerWidth * 0.85;
+    newWidth = Math.max(minW, Math.min(maxW, newWidth));
+    panel.style.width = newWidth + 'px';
+    isExpanded = false;
+    panel.classList.remove('expanded');
+    expandBtn.innerHTML = expandIcon;
+    expandBtn.title = 'Expand panel';
+  }, { passive: true });
+
+  document.addEventListener('touchend', function() {
+    if (!isDragging) return;
+    isDragging = false;
+    panel.classList.remove('resizing');
+    handle.classList.remove('dragging');
+  });
+
+  // Expand / Collapse toggle
+  expandBtn.addEventListener('click', function() {
+    if (window.innerWidth < 900) return;
+    panel.classList.add('smooth-resize');
+    if (isExpanded) {
+      // Collapse to default
+      panel.classList.remove('expanded');
+      panel.style.width = DEFAULT_WIDTH + 'px';
+      expandBtn.innerHTML = expandIcon;
+      expandBtn.title = 'Expand panel';
+      isExpanded = false;
+    } else {
+      // Expand
+      panel.classList.add('expanded');
+      panel.style.width = '';
+      expandBtn.innerHTML = shrinkIcon;
+      expandBtn.title = 'Shrink panel';
+      isExpanded = true;
+    }
+    // Remove smooth-resize class after transition completes
+    setTimeout(function() { panel.classList.remove('smooth-resize'); }, 350);
+  });
+
+  // Reset panel width when closed
+  const origClose = closeAiPanel;
+  closeAiPanel = function() {
+    origClose();
+    panel.style.width = '';
+    panel.classList.remove('expanded', 'resizing', 'smooth-resize');
+    isExpanded = false;
+    expandBtn.innerHTML = expandIcon;
+    expandBtn.title = 'Expand panel';
+  };
+  // Re-bind close button to the wrapped version
+  el.aiPanelClose.removeEventListener('click', origClose);
+  el.aiPanelClose.addEventListener('click', closeAiPanel);
+})();
 
 async function callAi(endpoint, body, onSuccess) {
   try {
@@ -4166,3 +4297,79 @@ if ('serviceWorker' in navigator) {
       .catch(err => console.error('Service Worker registration failed:', err));
   });
 }
+
+/* ---------- 🎯 Focus / Zen Mode & Typewriter Scrolling ---------- */
+(function initZenMode() {
+  let isZenMode = false;
+  const readerContainer = document.querySelector('.reader');
+  const content = document.getElementById('content');
+  const exitBtn = el.exitZenBtn;
+  const toggleBtn = el.zenModeBtn;
+
+  function updateActiveParagraph() {
+    if (!isZenMode || !content) return;
+    const children = Array.from(content.children);
+    if (!children.length) return;
+
+    const targetCenter = window.innerHeight * 0.38;
+    let closestEl = null;
+    let minDistance = Infinity;
+
+    children.forEach((child) => {
+      const rect = child.getBoundingClientRect();
+      const childCenter = rect.top + rect.height / 2;
+      const dist = Math.abs(childCenter - targetCenter);
+      if (dist < minDistance) {
+        minDistance = dist;
+        closestEl = child;
+      }
+    });
+
+    children.forEach((child) => {
+      if (child === closestEl) {
+        child.classList.add('zen-active-paragraph');
+      } else {
+        child.classList.remove('zen-active-paragraph');
+      }
+    });
+  }
+
+  function setZenMode(enable) {
+    isZenMode = enable;
+    if (isZenMode) {
+      document.body.classList.add('zen-mode');
+      if (exitBtn) exitBtn.style.display = 'flex';
+      updateActiveParagraph();
+    } else {
+      document.body.classList.remove('zen-mode');
+      if (exitBtn) exitBtn.style.display = 'none';
+      if (content) {
+        Array.from(content.children).forEach(child => child.classList.remove('zen-active-paragraph'));
+      }
+    }
+  }
+
+  if (toggleBtn) {
+    toggleBtn.addEventListener('click', () => setZenMode(!isZenMode));
+  }
+
+  if (exitBtn) {
+    exitBtn.addEventListener('click', () => setZenMode(false));
+  }
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && isZenMode) {
+      setZenMode(false);
+    }
+  });
+
+  if (readerContainer) {
+    let scrollTimeout;
+    readerContainer.addEventListener('scroll', () => {
+      if (!isZenMode) return;
+      if (scrollTimeout) cancelAnimationFrame(scrollTimeout);
+      scrollTimeout = requestAnimationFrame(updateActiveParagraph);
+    });
+  }
+})();
+

@@ -710,6 +710,44 @@ body {
   flex-direction: column;
   animation: panelSlideUp 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
+.ai-panel.resizing { transition: none !important; }
+.ai-panel.smooth-resize { transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
+
+/* Resize drag handle (desktop side panel only) */
+.ai-panel-resize-handle {
+  display: none;
+  position: absolute;
+  left: 0; top: 0; bottom: 0;
+  width: 6px;
+  cursor: col-resize;
+  z-index: 50;
+  background: transparent;
+  transition: background 0.2s;
+}
+.ai-panel-resize-handle::after {
+  content: '';
+  position: absolute;
+  left: 1px; top: 50%;
+  transform: translateY(-50%);
+  width: 4px; height: 40px;
+  border-radius: 3px;
+  background: var(--text-muted);
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+.ai-panel-resize-handle:hover,
+.ai-panel-resize-handle.dragging {
+  background: var(--accent);
+}
+.ai-panel-resize-handle:hover::after,
+.ai-panel-resize-handle.dragging::after {
+  opacity: 0.7;
+}
+
+/* Expand / Shrink toggle button */
+.ai-panel-expand-btn {
+  display: none;
+}
 
 @keyframes panelSlideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
 
@@ -1129,9 +1167,31 @@ body {
   .sidebar-overlay { display: none !important; }
   .ai-panel {
     left: auto; right: 0; top: 0; bottom: 0;
-    width: 420px; max-height: none; border-radius: 0;
+    width: 420px; min-width: 300px; max-width: 85vw; max-height: none; border-radius: 0;
     border-left: 1px solid var(--border); border-top: none;
     animation: panelSlideRight 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+  .ai-panel.expanded {
+    width: 65vw;
+  }
+  .ai-panel-resize-handle {
+    display: block;
+  }
+  .ai-panel-expand-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: none;
+    border: none;
+    color: var(--text-secondary);
+    cursor: pointer;
+    padding: 6px;
+    border-radius: var(--radius);
+    transition: color 0.2s, background 0.2s;
+  }
+  .ai-panel-expand-btn:hover {
+    background: var(--bg-hover);
+    color: var(--text-primary);
   }
   @keyframes panelSlideRight { from { transform: translateX(100%); } to { transform: translateX(0); } }
 }
@@ -2461,6 +2521,81 @@ mark[data-hl-id]:hover { filter: brightness(1.15); }
 .theme-opt-icon {
   font-size: 1rem;
 }
+
+/* ---------- Zen Mode & Typewriter Scrolling ---------- */
+body.zen-mode .topbar,
+body.zen-mode .sidebar,
+body.zen-mode .ai-toolbar,
+body.zen-mode .toc-panel,
+body.zen-mode #marginNotesPanel,
+body.zen-mode #aiPanel,
+body.zen-mode #readingStatsBar,
+body.zen-mode #focusModeBar,
+body.zen-mode #pomodoroWidget {
+  display: none !important;
+}
+
+body.zen-mode .layout {
+  height: 100vh;
+  overflow: hidden;
+}
+
+body.zen-mode .reader {
+  padding: 60px 24px 140px;
+  max-width: 820px;
+  margin: 0 auto;
+  overflow-y: auto;
+  scroll-behavior: smooth;
+}
+
+body.zen-mode #content {
+  line-height: 1.85;
+  font-size: 1.12rem;
+}
+
+/* Typewriter Scrolling Paragraph Dimming */
+body.zen-mode #content > * {
+  transition: opacity 0.35s ease, filter 0.35s ease, transform 0.25s ease;
+  opacity: 0.35;
+  filter: blur(0.2px);
+}
+
+body.zen-mode #content > .zen-active-paragraph {
+  opacity: 1;
+  filter: none;
+  transform: scale(1.01);
+}
+
+/* Floating Exit Zen Mode Button */
+#exitZenBtn {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 18px;
+  background: var(--bg-elevated);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  backdrop-filter: blur(8px);
+  transition: all 0.25s ease;
+  opacity: 0.7;
+}
+
+#exitZenBtn:hover {
+  opacity: 1;
+  border-color: var(--accent);
+  color: var(--accent);
+  transform: translateY(-2px);
+}
+
 
 
 

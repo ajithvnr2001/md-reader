@@ -24,7 +24,7 @@
 - **🗺️ Mind Map Generator**: Convert document text into a visual, hierarchical node diagram.
 - **📄 1-Page Exam Cheat Sheet**: Compress all definitions, code syntax, formulas, and rules into a 1-page print-ready reference sheet.
 - **🔍 AI Auto-Glossary**: Extract 8 to 15 key technical terms and display floating AI definition tooltips when hovering or tapping jargon in notes.
-- **🌐 AI Context-Aware Translator**: Translate document notes into 10 target languages (Spanish, French, German, Hindi, Japanese, Chinese, Tamil, Portuguese, Italian, Russian) with domain-specific terminology mapping and contextual vocabulary tables.
+- **🌐 AI Context-Aware Full Document Translator**: Complete line-by-line document translation into 17+ languages (9 Indian languages: Tamil 🇮🇳, Hindi 🇮🇳, Telugu 🇮🇳, Malayalam 🇮🇳, Kannada 🇮🇳, Bengali 🇮🇳, Marathi 🇮🇳, Gujarati 🇮🇳, Punjabi 🇮🇳 + Spanish 🇪🇸, French 🇫🇷, German 🇩🇪, Japanese 🇯🇵, Chinese 🇨🇳, Portuguese 🇵🇹, Italian 🇮🇹, Russian 🇷🇺). Enforces natural modern everyday phrasing (avoids archaic Senthamizh/formal textbook jargon), preserves code/math blocks, provides everyday context vocabulary tables, and supports **1-Click Side-by-Side Dual Reader View**.
 - **💬 Paragraph Discussion Threads with `@AI`**: Leave comments on any highlighted section and tag `@AI` to discuss, explain, or debate points directly in the margin thread.
 - **🔍 Semantic Workspace Search & Synthesis**: Search across all files in your library or synthesize comparative study guides from multiple selected documents.
 

@@ -25,6 +25,7 @@
 - **📄 1-Page Exam Cheat Sheet**: Compress all definitions, code syntax, formulas, and rules into a 1-page print-ready reference sheet.
 - **🔍 AI Auto-Glossary**: Extract 8 to 15 key technical terms and display floating AI definition tooltips when hovering or tapping jargon in notes.
 - **🌐 AI Context-Aware Full Document Translator**: Complete line-by-line document translation into 17+ languages (9 Indian languages: Tamil 🇮🇳, Hindi 🇮🇳, Telugu 🇮🇳, Malayalam 🇮🇳, Kannada 🇮🇳, Bengali 🇮🇳, Marathi 🇮🇳, Gujarati 🇮🇳, Punjabi 🇮🇳 + Spanish 🇪🇸, French 🇫🇷, German 🇩🇪, Japanese 🇯🇵, Chinese 🇨🇳, Portuguese 🇵🇹, Italian 🇮🇹, Russian 🇷🇺). Enforces natural modern everyday phrasing (avoids archaic Senthamizh/formal textbook jargon), preserves code/math blocks, provides everyday context vocabulary tables, and supports **1-Click Side-by-Side Dual Reader View**.
+- **🎙️ NotebookLM-Style 2-Host Audio Podcast Generator**: Converts complete documents into a 2-host spoken study podcast featuring **Alex (Host 🎙️)** and **Dr. Sam (Expert 🧠)**. Supports Indian languages (Tamil 🇮🇳, Hindi 🇮🇳, Telugu 🇮🇳, etc.), multi-speaker `gemini-3.1-flash-tts-preview` audio generation, permanent R2 audio storage, and interactive scrolling transcript synchronization.
 - **💬 Paragraph Discussion Threads with `@AI`**: Leave comments on any highlighted section and tag `@AI` to discuss, explain, or debate points directly in the margin thread.
 - **🔍 Semantic Workspace Search & Synthesis**: Search across all files in your library or synthesize comparative study guides from multiple selected documents.
 

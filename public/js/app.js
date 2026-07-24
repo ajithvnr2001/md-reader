@@ -215,6 +215,7 @@ const el = {
 
   autoGlossaryBtn: document.getElementById("autoGlossaryBtn"),
   translateBtn: document.getElementById("translateBtn"),
+  podcastBtn: document.getElementById("podcastBtn"),
 
   focusToggleBtn: document.getElementById("focusToggleBtn"),
   focusInput: document.getElementById("focusInput"),
@@ -3424,6 +3425,246 @@ const aiTranslator = {
   }
 };
 
+/* ================================================================
+   4. 🎙️ AI 2-HOST AUDIO PODCAST GENERATOR (NotebookLM Style)
+   ================================================================ */
+const aiPodcast = {
+  languages: [
+    { code: "Tamil", name: "Tamil (தமிழ் - எளிய பேச்சுத்தமிழ்) 🇮🇳" },
+    { code: "Hindi", name: "Hindi (हिंदी) 🇮🇳" },
+    { code: "Telugu", name: "Telugu (తెలుగు) 🇮🇳" },
+    { code: "Malayalam", name: "Malayalam (മലയാളം) 🇮🇳" },
+    { code: "Kannada", name: "Kannada (ಕನ್ನಡ) 🇮🇳" },
+    { code: "Bengali", name: "Bengali (বাংলা) 🇮🇳" },
+    { code: "Marathi", name: "Marathi (मराठी) 🇮🇳" },
+    { code: "Gujarati", name: "Gujarati (ગુજરાતી) 🇮🇳" },
+    { code: "Punjabi", name: "Punjabi (ਪੰਜਾਬੀ) 🇮🇳" },
+    { code: "English", name: "English (UK/US) 🇬🇧" }
+  ],
+
+  currentAudio: null,
+  currentTurnIndex: 0,
+  dialogueData: [],
+  isPlaying: false,
+
+  init() {
+    if (el.podcastBtn) {
+      el.podcastBtn.addEventListener('click', () => {
+        this.openLanguagePicker();
+      });
+    }
+  },
+
+  openLanguagePicker() {
+    if (!state.activeKey) return;
+    
+    openAiPanel("🎙️ AI 2-Host Study Podcast", false, 'podcast');
+    
+    let langButtonsHtml = this.languages.map(l => 
+      `<button class="btn-secondary podcast-lang-btn" data-lang="${l.code}" style="padding:10px 12px; font-size:0.85rem; background:var(--bg-card); border:1px solid var(--border); border-radius:var(--radius); color:var(--text); cursor:pointer; text-align:left; transition:all 0.2s; font-weight:500">
+        ${l.name}
+      </button>`
+    ).join('');
+
+    el.aiPanelContent.innerHTML = `
+      <div style="padding:16px; display:flex; flex-direction:column; gap:16px">
+        <div>
+          <h3 style="margin:0 0 6px; font-size:1.05rem">🎙️ Generate 2-Host Study Podcast</h3>
+          <p style="margin:0; font-size:0.82rem; color:var(--text-dim)">
+            Analyzes the complete document from basic concepts to advanced points. Features <strong>Alex (Host 🎙️)</strong> and <strong>Dr. Sam (Expert 🧠)</strong> in a spoken dialogue episode.
+          </p>
+        </div>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px">
+          ${langButtonsHtml}
+        </div>
+      </div>
+    `;
+
+    const buttons = el.aiPanelContent.querySelectorAll('.podcast-lang-btn');
+    buttons.forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        const selectedLang = e.currentTarget.getAttribute('data-lang');
+        this.generatePodcast(selectedLang);
+      });
+    });
+  },
+
+  async generatePodcast(language) {
+    this.stopPlayback();
+    openAiPanel(`🎙️ Generating 2-Host Podcast in ${language}...`, false, 'podcast');
+    show(el.aiSpinner, 'flex');
+
+    try {
+      const res = await fetch("/api/ai/podcast/generate", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ key: state.activeKey, language })
+      });
+
+      hide(el.aiSpinner);
+
+      if (!res.ok) throw new Error(`Server returned ${res.status}`);
+      const data = await res.json();
+
+      this.dialogueData = data.dialogue || [];
+      this.renderPodcastPlayer(data);
+      gamification.awardXp(20, 'podcast');
+    } catch(err) {
+      hide(el.aiSpinner);
+      el.aiPanelContent.innerHTML = `
+        <div style="padding:16px; background:rgba(248,81,73,0.08); border:1px solid var(--error); border-radius:var(--radius); color:var(--error)">
+          <strong>Podcast Generation Error:</strong> ${err.message}
+        </div>
+      `;
+    }
+  },
+
+  renderPodcastPlayer(data) {
+    const audioUrl = data.audioUrl;
+    
+    let dialogueListHtml = (data.dialogue || []).map((item, idx) => {
+      const isAlex = item.speaker === 'Alex';
+      const avatar = isAlex ? '🎙️' : '🧠';
+      const badgeClass = isAlex ? 'background:rgba(99,102,241,0.15);color:#818cf8' : 'background:rgba(16,185,129,0.15);color:#34d399';
+      return `
+        <div class="podcast-turn-item" data-idx="${idx}" style="display:flex; gap:12px; padding:12px; border-radius:var(--radius); border:1px solid var(--border); background:var(--bg-card); transition:all 0.25s; margin-bottom:8px">
+          <div style="font-size:1.2rem; min-width:32px; height:32px; display:flex; align-items:center; justify-content:center; border-radius:50%; ${badgeClass}">
+            ${avatar}
+          </div>
+          <div style="flex:1">
+            <div style="font-size:0.78rem; font-weight:700; color:var(--text-dim); margin-bottom:4px">
+              ${item.speaker}
+            </div>
+            <div style="font-size:0.9rem; line-height:1.5; color:var(--text)">
+              ${item.text}
+            </div>
+          </div>
+        </div>
+      `;
+    }).join('');
+
+    el.aiPanelContent.innerHTML = `
+      <div style="padding:16px">
+        <!-- Podcast Title Header -->
+        <div style="margin-bottom:16px; padding-bottom:12px; border-bottom:1px solid var(--border)">
+          <div style="font-size:0.75rem; font-weight:700; color:var(--accent); text-transform:uppercase; letter-spacing:0.05em">
+            📻 NotebookLM 2-Host Episode • ${data.language}
+          </div>
+          <h2 style="margin:4px 0 0; font-size:1.25rem">${data.podcastTitle || "Study Podcast Episode"}</h2>
+        </div>
+
+        <!-- Audio Player & Controls Bar -->
+        <div style="padding:14px; background:var(--bg-elevated); border:1px solid var(--border); border-radius:var(--radius-lg); margin-bottom:20px; display:flex; flex-direction:column; gap:12px">
+          ${audioUrl ? `
+            <audio id="podcastHtmlAudio" controls style="width:100%">
+              <source src="${audioUrl}" type="audio/wav">
+              Your browser does not support audio playback.
+            </audio>
+          ` : `
+            <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px">
+              <div style="display:flex; align-items:center; gap:8px">
+                <button id="playPodcastSpeechBtn" class="btn-primary" style="padding:8px 16px; font-size:0.85rem; background:var(--accent); border:none; border-radius:var(--radius); color:var(--accent-contrast); cursor:pointer; font-weight:600">
+                  ▶️ Play Podcast Dialogue
+                </button>
+                <button id="stopPodcastSpeechBtn" class="btn-secondary" style="padding:8px 12px; font-size:0.85rem; background:var(--bg-card); border:1px solid var(--border); border-radius:var(--radius); color:var(--text); cursor:pointer">
+                  ⏹️ Stop
+                </button>
+              </div>
+              <div style="font-size:0.78rem; color:var(--text-dim)">
+                Web Audio Voice Synthesis
+              </div>
+            </div>
+          `}
+        </div>
+
+        <!-- Interactive Scrolling Transcript -->
+        <div style="margin-bottom:12px; font-size:0.85rem; font-weight:700; color:var(--text-dim); text-transform:uppercase; letter-spacing:0.05em">
+          📜 Interactive Transcript
+        </div>
+        <div id="podcastTranscriptContainer" style="max-height:350px; overflow-y:auto; padding-right:4px">
+          ${dialogueListHtml}
+        </div>
+      </div>
+    `;
+
+    const playBtn = el.aiPanelContent.querySelector('#playPodcastSpeechBtn');
+    const stopBtn = el.aiPanelContent.querySelector('#stopPodcastSpeechBtn');
+
+    if (playBtn) {
+      playBtn.addEventListener('click', () => this.toggleSpeechPlayback(playBtn));
+    }
+    if (stopBtn) {
+      stopBtn.addEventListener('click', () => this.stopPlayback());
+    }
+  },
+
+  toggleSpeechPlayback(btn) {
+    if (this.isPlaying) {
+      this.stopPlayback();
+      if (btn) btn.innerHTML = `▶️ Play Podcast Dialogue`;
+    } else {
+      this.isPlaying = true;
+      if (btn) btn.innerHTML = `⏸️ Pause`;
+      this.speakTurn(this.currentTurnIndex);
+    }
+  },
+
+  speakTurn(index) {
+    if (!this.isPlaying || index >= this.dialogueData.length) {
+      this.stopPlayback();
+      return;
+    }
+
+    this.currentTurnIndex = index;
+    const turn = this.dialogueData[index];
+
+    const items = el.aiPanelContent.querySelectorAll('.podcast-turn-item');
+    items.forEach((item, idx) => {
+      if (idx === index) {
+        item.style.borderColor = 'var(--accent)';
+        item.style.backgroundColor = 'var(--bg-hover)';
+        item.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      } else {
+        item.style.borderColor = 'var(--border)';
+        item.style.backgroundColor = 'var(--bg-card)';
+      }
+    });
+
+    if ('speechSynthesis' in window) {
+      window.speechSynthesis.cancel();
+      const utterance = new SpeechSynthesisUtterance(turn.text);
+      utterance.rate = 1.0;
+      utterance.pitch = turn.speaker === 'Alex' ? 1.1 : 0.95;
+
+      utterance.onend = () => {
+        if (this.isPlaying) {
+          setTimeout(() => this.speakTurn(index + 1), 300);
+        }
+      };
+
+      utterance.onerror = () => {
+        if (this.isPlaying) {
+          setTimeout(() => this.speakTurn(index + 1), 300);
+        }
+      };
+
+      window.speechSynthesis.speak(utterance);
+    } else {
+      setTimeout(() => this.speakTurn(index + 1), 2500);
+    }
+  },
+
+  stopPlayback() {
+    this.isPlaying = false;
+    this.currentTurnIndex = 0;
+    if ('speechSynthesis' in window) {
+      window.speechSynthesis.cancel();
+    }
+    const playBtn = el.aiPanelContent ? el.aiPanelContent.querySelector('#playPodcastSpeechBtn') : null;
+    if (playBtn) playBtn.innerHTML = `▶️ Play Podcast Dialogue`;
+  }
+};
+
 
 /* ================================================================
    3. TOPIC FOCUS MODE (CONCEPT ISOLATION)
@@ -4320,6 +4561,7 @@ async function initApp() {
   gamification.init();
   autoGlossary.init();
   aiTranslator.init();
+  aiPodcast.init();
   topicFocus.init();
   splitScreen.init();
 

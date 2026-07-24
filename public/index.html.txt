@@ -329,6 +329,9 @@
           <button id="translateBtn" class="ai-btn explain" style="background:#d97706;color:#fff">
             <span class="ai-btn-icon">🌐</span> AI Translate
           </button>
+          <button id="podcastBtn" class="ai-btn quiz" style="background:#7c3aed;color:#fff">
+            <span class="ai-btn-icon">🎙️</span> AI Podcast
+          </button>
         </div>
 
         <!-- Floating Annotation Toolbar (appears on text selection) -->

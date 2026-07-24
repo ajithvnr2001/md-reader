@@ -294,6 +294,64 @@ const translateSchema = {
   required: ["targetLanguage", "translatedTitle", "fullTranslation", "keyTerms"]
 };
 
+const podcastSchema = {
+  type: "OBJECT",
+  properties: {
+    podcastTitle: { type: "STRING", description: "Catchy title for this 2-host podcast episode in target language" },
+    language: { type: "STRING", description: "Language of the dialogue" },
+    dialogue: {
+      type: "ARRAY",
+      items: {
+        type: "OBJECT",
+        properties: {
+          speaker: { type: "STRING", description: "Either 'Alex' or 'Dr. Sam'" },
+          text: { type: "STRING", description: "Spoken line in natural language" }
+        },
+        required: ["speaker", "text"]
+      }
+    }
+  },
+  required: ["podcastTitle", "language", "dialogue"]
+};
+
+async function runGeminiTTS(env, prompt) {
+  const apiKey = env.GEMINI_API_KEY || "";
+  const url = `https://generativelanguage.googleapis.com/v1beta/interactions?key=${apiKey}`;
+
+  const body = {
+    model: "gemini-3.1-flash-tts-preview",
+    input: prompt,
+    response_format: { type: "audio" },
+    generation_config: {
+      speech_config: [
+        { speaker: "Alex", voice: "Kore" },
+        { speaker: "Dr. Sam", voice: "Puck" }
+      ]
+    }
+  };
+
+  try {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body)
+    });
+
+    if (!res.ok) {
+      console.warn("Gemini TTS endpoint status:", res.status);
+      return null;
+    }
+
+    const data = await res.json();
+    if (data.output_audio && data.output_audio.data) {
+      return data.output_audio.data;
+    }
+  } catch (err) {
+    console.warn("Gemini TTS fetch error:", err.message);
+  }
+  return null;
+}
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
@@ -659,6 +717,80 @@ CRITICAL TRANSLATION GUIDELINES FOR ${targetLanguage}:
       } catch (err) {
         console.error("Translation error:", err);
         return json({ error: err.message || "Gemini translation failed" }, 500);
+      }
+    }
+
+    // ---- API: Serve saved podcast audio from R2 ----
+    if (pathname === "/api/podcast/audio" && request.method === "GET") {
+      const audioKey = url.searchParams.get("key");
+      if (!audioKey) return json({ error: "Missing audio key" }, 400);
+
+      const obj = await env.MD_BUCKET.get(audioKey);
+      if (!obj) return json({ error: "Audio not found" }, 404);
+
+      return new Response(obj.body, {
+        headers: {
+          "content-type": "audio/wav",
+          "Cache-Control": "public, max-age=31536000, immutable",
+          ...CORS_HEADERS
+        }
+      });
+    }
+
+    // ---- API: Gemini — 2-Host Audio Podcast Generator ----
+    if (pathname === "/api/ai/podcast/generate" && request.method === "POST") {
+      try {
+        const { key, language = "Tamil" } = await request.json();
+        const text = await getMarkdownText(env, key);
+        if (text === null) return json({ error: "File not found" }, 404);
+
+        const systemInstruction = `You are an expert audio producer creating a NotebookLM-style 2-Host Study Podcast Episode.
+
+HOST ROLES:
+1. Alex (Host 🎙️): Enthusiastic, curious student host. Asks intuitive questions starting from the fundamental basic concepts up to advanced topic nuances.
+2. Dr. Sam (Expert 🧠): Warm, knowledgeable expert mentor. Explains concepts with clarity, simple everyday analogies, and clear technical insights.
+
+LANGUAGE & TONE RULES FOR ${language}:
+- Thorough Coverage: Analyze and discuss the WHOLE document from beginning to end. Cover basic fundamentals first, then progress through all core sections and key takeaways.
+- Natural Everyday Spoken Language:
+  * For TAMIL: Use simple, modern everyday Tamil (எளிய தற்கால பேச்சுத்தமிழ் / இயல்பான உரைநடை). DO NOT use obsolete, ancient Senthamizh words. Keep terms like Database, API, Server, Code, Cloud in English or common modern Tamil transliteration.
+  * For INDIAN & REGIONAL LANGUAGES (Hindi, Tamil, Telugu, Malayalam, Kannada, Bengali, Marathi, Gujarati, Punjabi): Phrased naturally as modern students and tech mentors actually speak.
+
+Generate 6 to 12 dialogue turns covering the document thoroughly.`;
+
+        const messages = [{ role: "user", content: `Please create a 2-host audio podcast dialogue script in natural modern ${language} for the following complete document:\n\n${truncateForModel(text, 12000)}` }];
+
+        const responseText = await runGemini(env, messages, systemInstruction, "application/json", podcastSchema);
+        const podcastData = JSON.parse(responseText);
+
+        // Attempt TTS audio generation & R2 storage
+        let audioKey = null;
+        try {
+          const promptText = podcastData.dialogue.map(d => `${d.speaker}: ${d.text}`).join("\n");
+          const ttsAudioBase64 = await runGeminiTTS(env, `TTS dialogue between Alex and Dr. Sam:\n${promptText}`);
+
+          if (ttsAudioBase64) {
+            const rawPcm = Uint8Array.from(atob(ttsAudioBase64), c => c.charCodeAt(0));
+            const storageKey = `podcasts/${key.replace(/[^a-zA-Z0-9_\.-]/g, "_")}_${language}.wav`;
+            await env.MD_BUCKET.put(storageKey, rawPcm, {
+              httpMetadata: { contentType: "audio/wav" }
+            });
+            audioKey = storageKey;
+          }
+        } catch (ttsErr) {
+          console.warn("TTS storage warning:", ttsErr.message);
+        }
+
+        return json({
+          podcastTitle: podcastData.podcastTitle,
+          language: podcastData.language || language,
+          dialogue: podcastData.dialogue,
+          audioKey: audioKey,
+          audioUrl: audioKey ? `/api/podcast/audio?key=${encodeURIComponent(audioKey)}` : null
+        });
+      } catch (err) {
+        console.error("Podcast generation error:", err);
+        return json({ error: err.message || "Gemini podcast failed" }, 500);
       }
     }
 

@@ -3257,16 +3257,23 @@ const autoGlossary = {
    ================================================================ */
 const aiTranslator = {
   languages: [
-    { code: "Spanish", name: "Spanish 🇪🇸" },
-    { code: "French", name: "French 🇫🇷" },
-    { code: "German", name: "German 🇩🇪" },
-    { code: "Hindi", name: "Hindi 🇮🇳" },
-    { code: "Japanese", name: "Japanese 🇯🇵" },
-    { code: "Chinese", name: "Chinese (Simplified) 🇨🇳" },
-    { code: "Tamil", name: "Tamil 🇮🇳" },
-    { code: "Portuguese", name: "Portuguese 🇵🇹" },
-    { code: "Italian", name: "Italian 🇮🇹" },
-    { code: "Russian", name: "Russian 🇷🇺" }
+    { code: "Tamil", name: "Tamil (தமிழ் - எளிய தமிழ்) 🇮🇳" },
+    { code: "Hindi", name: "Hindi (हिंदी) 🇮🇳" },
+    { code: "Telugu", name: "Telugu (తెలుగు) 🇮🇳" },
+    { code: "Malayalam", name: "Malayalam (മലയാളം) 🇮🇳" },
+    { code: "Kannada", name: "Kannada (ಕನ್ನಡ) 🇮🇳" },
+    { code: "Bengali", name: "Bengali (বাংলা) 🇮🇳" },
+    { code: "Marathi", name: "Marathi (मराठी) 🇮🇳" },
+    { code: "Gujarati", name: "Gujarati (ગુજરાતી) 🇮🇳" },
+    { code: "Punjabi", name: "Punjabi (ਪੰਜਾਬੀ) 🇮🇳" },
+    { code: "Spanish", name: "Spanish (Español) 🇪🇸" },
+    { code: "French", name: "French (Français) 🇫🇷" },
+    { code: "German", name: "German (Deutsch) 🇩🇪" },
+    { code: "Japanese", name: "Japanese (日本語) 🇯🇵" },
+    { code: "Chinese", name: "Chinese (Simplified 中文) 🇨🇳" },
+    { code: "Portuguese", name: "Portuguese (Português) 🇵🇹" },
+    { code: "Italian", name: "Italian (Italiano) 🇮🇹" },
+    { code: "Russian", name: "Russian (Русский) 🇷🇺" }
   ],
 
   init() {
@@ -3283,7 +3290,7 @@ const aiTranslator = {
     openAiPanel("🌐 AI Contextual Translation", false, 'translate');
     
     let langButtonsHtml = this.languages.map(l => 
-      `<button class="btn-secondary lang-select-btn" data-lang="${l.code}" style="padding:8px 12px; font-size:0.85rem; background:var(--bg-card); border:1px solid var(--border); border-radius:var(--radius); color:var(--text); cursor:pointer; text-align:left; transition:all 0.2s">
+      `<button class="btn-secondary lang-select-btn" data-lang="${l.code}" style="padding:10px 12px; font-size:0.85rem; background:var(--bg-card); border:1px solid var(--border); border-radius:var(--radius); color:var(--text); cursor:pointer; text-align:left; transition:all 0.2s; font-weight:500">
         ${l.name}
       </button>`
     ).join('');
@@ -3293,7 +3300,7 @@ const aiTranslator = {
         <div>
           <h3 style="margin:0 0 6px; font-size:1.05rem">Select Target Language</h3>
           <p style="margin:0; font-size:0.82rem; color:var(--text-dim)">
-            Provides a domain-accurate, contextual translation preserving code, formulas, and technical terminology.
+            Translates the complete document into natural modern phrasing while keeping technical code, math, and formulas intact.
           </p>
         </div>
         <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px">
@@ -3312,7 +3319,7 @@ const aiTranslator = {
   },
 
   async performTranslation(targetLanguage) {
-    openAiPanel(`🌐 Translating to ${targetLanguage}...`, false, 'translate');
+    openAiPanel(`🌐 Translating full document into ${targetLanguage}...`, false, 'translate');
     show(el.aiSpinner, 'flex');
 
     try {
@@ -3353,7 +3360,7 @@ const aiTranslator = {
       termsTableHtml = `
         <div style="margin-top:20px">
           <h4 style="margin:0 0 10px; font-size:0.95rem; display:flex; align-items:center; gap:6px">
-            <span>📚 Contextual Technical Vocabulary</span>
+            <span>📚 Technical Vocabulary Notes</span>
           </h4>
           <div style="overflow-x:auto; border:1px solid var(--border); border-radius:var(--radius); background:var(--bg-card)">
             <table style="width:100%; border-collapse:collapse; text-align:left">
@@ -3361,7 +3368,7 @@ const aiTranslator = {
                 <tr style="background:var(--bg-elevated); border-bottom:1px solid var(--border); font-size:0.78rem; color:var(--text-dim)">
                   <th style="padding:8px 10px">Original Term</th>
                   <th style="padding:8px 10px">Translation</th>
-                  <th style="padding:8px 10px">Domain Context Note</th>
+                  <th style="padding:8px 10px">Everyday Context Note</th>
                 </tr>
               </thead>
               <tbody>
@@ -3373,20 +3380,26 @@ const aiTranslator = {
       `;
     }
 
-    const htmlContent = marked.parse(data.contextualSummary || "");
+    const translatedMarkdown = data.fullTranslation || data.contextualSummary || "";
+    const htmlContent = marked.parse(translatedMarkdown);
 
     el.aiPanelContent.innerHTML = `
       <div style="padding:16px">
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; padding-bottom:10px; border-bottom:1px solid var(--border)">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; padding-bottom:10px; border-bottom:1px solid var(--border); flex-wrap:wrap; gap:8px">
           <span style="font-size:0.82rem; font-weight:700; color:var(--accent); text-transform:uppercase; letter-spacing:0.05em">
-            🌐 ${data.targetLanguage} Translation
+            🌐 Full ${data.targetLanguage} Translation
           </span>
-          <button id="reSelectLangBtn" class="btn-secondary" style="padding:4px 10px; font-size:0.75rem; background:var(--bg-card); border:1px solid var(--border); border-radius:var(--radius); color:var(--text); cursor:pointer">
-            Change Language
-          </button>
+          <div style="display:flex; gap:6px">
+            <button id="applyToReaderBtn" class="btn-primary" style="padding:4px 10px; font-size:0.75rem; background:var(--accent); border:none; border-radius:var(--radius); color:var(--accent-contrast); cursor:pointer">
+              View Side-by-Side
+            </button>
+            <button id="reSelectLangBtn" class="btn-secondary" style="padding:4px 10px; font-size:0.75rem; background:var(--bg-card); border:1px solid var(--border); border-radius:var(--radius); color:var(--text); cursor:pointer">
+              Change Language
+            </button>
+          </div>
         </div>
 
-        <h2 style="margin:0 0 12px; font-size:1.2rem">${data.translatedTitle || "Translated Summary"}</h2>
+        <h2 style="margin:0 0 12px; font-size:1.2rem">${data.translatedTitle || "Translated Document"}</h2>
         <div class="markdown-body" style="font-size:0.92rem; line-height:1.7">
           ${htmlContent}
         </div>
@@ -3398,6 +3411,15 @@ const aiTranslator = {
     const reSelectBtn = el.aiPanelContent.querySelector('#reSelectLangBtn');
     if (reSelectBtn) {
       reSelectBtn.addEventListener('click', () => this.openLanguagePicker());
+    }
+
+    const applyToReaderBtn = el.aiPanelContent.querySelector('#applyToReaderBtn');
+    if (applyToReaderBtn) {
+      applyToReaderBtn.addEventListener('click', () => {
+        if (splitScreen) {
+          splitScreen.openSecondaryWithMarkdown(data.translatedTitle || "Translated Document", translatedMarkdown);
+        }
+      });
     }
   }
 };

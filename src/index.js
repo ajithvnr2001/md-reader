@@ -277,7 +277,7 @@ const translateSchema = {
   properties: {
     targetLanguage: { type: "STRING", description: "Target language name" },
     translatedTitle: { type: "STRING", description: "Meaningful title in target language" },
-    contextualSummary: { type: "STRING", description: "Fluent, domain-accurate contextual translation summary in markdown format" },
+    fullTranslation: { type: "STRING", description: "Complete, full document translation preserving all headings, lists, math formulas, and code blocks in clean Markdown format." },
     keyTerms: {
       type: "ARRAY",
       items: {
@@ -285,13 +285,13 @@ const translateSchema = {
         properties: {
           originalTerm: { type: "STRING" },
           translatedTerm: { type: "STRING" },
-          contextNote: { type: "STRING", description: "Why this term is translated this way in context" }
+          contextNote: { type: "STRING", description: "Why this term is translated this way in simple natural context" }
         },
         required: ["originalTerm", "translatedTerm", "contextNote"]
       }
     }
   },
-  required: ["targetLanguage", "translatedTitle", "contextualSummary", "keyTerms"]
+  required: ["targetLanguage", "translatedTitle", "fullTranslation", "keyTerms"]
 };
 
 export default {
@@ -636,17 +636,23 @@ ${docContext}Target Paragraph:
       }
     }
 
-    // ---- API: Gemini — context-aware translation ----
+    // ---- API: Gemini — context-aware full document translation ----
     if (pathname === "/api/ai/translate" && request.method === "POST") {
       try {
-        const { key, targetLanguage = "Spanish" } = await request.json();
+        const { key, targetLanguage = "Tamil" } = await request.json();
         const text = await getMarkdownText(env, key);
         if (text === null) return json({ error: "File not found" }, 404);
 
-        const systemInstruction = `You are an expert technical translator specializing in domain-accurate, highly natural context-aware translations. 
-Translate the provided study note into ${targetLanguage}. 
-DO NOT do literal word-for-word translation. Preserve technical terms, code syntax, formulas, and domain jargon with meaningful context notes explaining how terms translate in this domain.`;
-        const messages = [{ role: "user", content: `Please translate the following document context meaningfully into ${targetLanguage}:\n\n${truncateForModel(text, 10000)}` }];
+        const systemInstruction = `You are a master technical translator specializing in natural, modern, human-friendly translations.
+
+CRITICAL TRANSLATION GUIDELINES FOR ${targetLanguage}:
+1. FULL DOCUMENT TRANSLATION: Translate the ENTIRE document thoroughly from start to finish. Do NOT shorten, truncate, or summarize it into a brief recap. Translate all paragraphs, bullet points, sections, and explanations fully.
+2. NATURAL & MODERN LANGUAGE (NO ARCHAIC/PURE TEXTBOOK PHRASING):
+   - For TAMIL: Use simple, natural, modern everyday Tamil (எளிய தற்கால தமிழ் / இயல்பான எளிய பேச்சு நடை). ABSOLUTELY DO NOT USE ancient, formal, or archaic Senthamizh (செந்தமிழ்) words like 'தரவுத்தளம்' or 'மின்அஞ்சல்' that everyday students and tech professionals never speak. Keep technical terms like Database, API, Cloud, Server, Code, Worker in English or natural modern Tamil transliteration (e.g. டேட்டாபேஸ் / API / கிளவுட்) so it reads completely naturally and effortlessly.
+   - For INDIAN & REGIONAL LANGUAGES (Hindi, Tamil, Telugu, Malayalam, Kannada, Bengali, Marathi, Gujarati, Punjabi): Use natural, conversational, crystal-clear modern phrasing used in daily educational discussions. Avoid obscure textbook jargon.
+3. PRESERVE MARKDOWN & CODE: Keep all Markdown headers (#, ##), bold text (**), bullet lists, LaTeX math formulas ($...$), and code blocks (\`\`\`...\`\`\`) completely intact and untouched.`;
+
+        const messages = [{ role: "user", content: `Please translate the full document below into natural, easy-to-understand modern ${targetLanguage}:\n\n${truncateForModel(text, 12000)}` }];
 
         const responseText = await runGemini(env, messages, systemInstruction, "application/json", translateSchema);
         return json(JSON.parse(responseText));

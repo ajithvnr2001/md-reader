@@ -44,9 +44,8 @@
 
 ### 🎨 Customization, Layout & Accessibility
 - **🎯 Focus / Zen Mode & Typewriter Scrolling**: Full-screen, distraction-free reading environment that hides UI chrome and toolbars. Features active-paragraph focus with smooth scrolling and dimming of non-active text.
-- **↔️ Resizable & Expandable AI Side Panel**: Smooth drag-to-resize handle on desktop (300px to 85vw width) plus a one-click ↔️ expand/shrink toggle button for full-width workspace analysis.
-- **8 Premium Eye-Care Themes**: Choose from Night 🌙, Day ☀️, Sepia 🍵, OLED Black 🖤, Forest Sage 🌲, Cafe Latte ☕, Nord Frost 🧊, and Sakura Rose 🌸 via the theme selection popover.
-- **🔤 Typography & Line Spacing Settings**: Customize font family (Inter, Roboto, Merriweather Serif, Lexend, OpenDyslexic) and line height (1.4x, 1.6x, 1.8x, 2.0x).
+- **🎨 8 Eye-Care Themes, 5 Accent Pickers & Dynamic Typography Engine**: Personalize your study environment with 8 base themes (Night, Day, Sepia, OLED Black, Forest Sage, Cafe Latte, Nord Frost, Sakura Rose) + 5 Accent Swatches (Indigo, Emerald, Sky, Rose, Amber) + 5 Font Families (Inter, Roboto, Merriweather Serif, Lexend Accessible, OpenDyslexic) + 4 Line Spacing Presets (1.4x to 2.0x).
+- **📐 Resizable & Expandable AI Side Panel**: Drag-to-resize handle (300px to 85vw) with 1-click expand/collapse toggle for comfortable side-by-side study workflows.
 - **📐 Split-Screen Dual Reader**: Compare two Markdown notes side-by-side on desktop/tablets, with adaptive vertical stacking on mobile viewports.
 - **Dynamic Accent Color Picker**: Select custom HSL color accents (Indigo, Emerald, Sky, Rose, Amber) with fixed mobile-ready popovers.
 - **Adjustable Typography**: Font size scaling controls (A+ / A-) for comfortable reading on any screen size.

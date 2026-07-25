@@ -537,10 +537,21 @@ el.fontDownBtn.addEventListener("click", () => {
   applyFontScale();
 });
 
-/* ---------------- Typography & Line Spacing Settings ---------------- */
+const FONT_MAP = {
+  inter: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+  roboto: "'Roboto', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
+  merriweather: "'Merriweather', Georgia, serif",
+  lexend: "'Lexend', -apple-system, BlinkMacSystemFont, sans-serif",
+  dyslexic: "'OpenDyslexic', sans-serif"
+};
+
 function applyFontFamily(font) {
   state.activeFont = font || "inter";
   localStorage.setItem("md-reader-font-family", state.activeFont);
+  
+  const fontValue = FONT_MAP[state.activeFont] || FONT_MAP.inter;
+  document.documentElement.style.setProperty("--font-main", fontValue);
+  document.body.style.fontFamily = fontValue;
   
   // Remove existing font classes on documentElement
   document.documentElement.classList.remove(

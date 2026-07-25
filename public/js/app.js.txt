@@ -25,7 +25,6 @@ const state = {
   isSplitMode: false,
   activePane: "primary",
   secondaryKey: null,
-  folderStateMap: JSON.parse(localStorage.getItem("md-reader-folder-state") || "{}"),
 };
 
 function saveAiCache() {
@@ -228,10 +227,6 @@ const el = {
   focusClearBtn: document.getElementById("focusClearBtn"),
 
   // Split Mode & Font Settings refs
-  splitControlsGroup: document.getElementById("splitControlsGroup"),
-  swapPanesBtn: document.getElementById("swapPanesBtn"),
-  syncScrollBtn: document.getElementById("syncScrollBtn"),
-  splitResizer: document.getElementById("splitResizer"),
   splitModeBtn: document.getElementById("splitModeBtn"),
   readerSplitWrapper: document.getElementById("readerSplitWrapper"),
   primaryPane: document.getElementById("primaryPane"),
@@ -542,9 +537,21 @@ el.fontDownBtn.addEventListener("click", () => {
   applyFontScale();
 });
 
+const FONT_MAP = {
+  inter: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+  roboto: "'Roboto', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
+  merriweather: "'Merriweather', Georgia, serif",
+  lexend: "'Lexend', -apple-system, BlinkMacSystemFont, sans-serif",
+  dyslexic: "'OpenDyslexic', sans-serif"
+};
+
 function applyFontFamily(font) {
   state.activeFont = font || "inter";
   localStorage.setItem("md-reader-font-family", state.activeFont);
+  
+  const fontValue = FONT_MAP[state.activeFont] || FONT_MAP.inter;
+  document.documentElement.style.setProperty("--font-main", fontValue);
+  document.body.style.fontFamily = fontValue;
   
   // Remove existing font classes on documentElement
   document.documentElement.classList.remove(
@@ -1068,17 +1075,7 @@ function buildTree(files) {
     current.files.push({ ...f, name });
   }
   return root;
-window.toggleFolderHeader = function(headerElem, fullPath) {
-  headerElem.classList.toggle('collapsed');
-  if (headerElem.nextElementSibling) {
-    headerElem.nextElementSibling.classList.toggle('collapsed');
-  }
-  if (!state.folderStateMap) state.folderStateMap = {};
-  state.folderStateMap[fullPath] = !headerElem.classList.contains('collapsed');
-  try {
-    localStorage.setItem("md-reader-folder-state", JSON.stringify(state.folderStateMap));
-  } catch(e) {}
-};
+}
 
 function renderTreeHtml(node, path = "") {
   let html = "";
@@ -1092,21 +1089,15 @@ function renderTreeHtml(node, path = "") {
     const countFiles = (n) => n.files.length + Object.values(n.folders).reduce((acc, c) => acc + countFiles(c), 0);
     const count = countFiles(childNode);
     
-    const isTopLevel = !path;
-    const isParentOfActive = (state.activeKey && state.activeKey.startsWith(fullPath + '/')) || (state.secondaryKey && state.secondaryKey.startsWith(fullPath + '/'));
+    const isParentOfActive = state.activeKey && state.activeKey.startsWith(fullPath + '/');
     const isSearching = el.searchInput && el.searchInput.value && el.searchInput.value.trim().length > 0;
-    
-    let isExpanded = isTopLevel || isParentOfActive || isSearching;
-    if (state.folderStateMap && fullPath in state.folderStateMap) {
-      isExpanded = state.folderStateMap[fullPath];
-    }
-    const collapsedClass = isExpanded ? "" : "collapsed";
+    const collapsedClass = (isParentOfActive || isSearching) ? "" : "collapsed";
 
     const dragOverHandlers = `ondragover="event.preventDefault(); this.classList.add('drag-over');" ondragenter="event.preventDefault(); this.classList.add('drag-over');" ondragleave="this.classList.remove('drag-over');" ondrop="handleFileDrop(event, '${fullPath}')"`;
 
     html += `
       <div class="folder-section">
-        <div class="folder-header ${collapsedClass}" data-path="${fullPath}" ${dragOverHandlers} onclick="toggleFolderHeader(this, '${fullPath}')">
+        <div class="folder-header ${collapsedClass}" data-path="${fullPath}" ${dragOverHandlers} onclick="this.classList.toggle('collapsed'); this.nextElementSibling.classList.toggle('collapsed')">
           <svg class="folder-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
           ${fName}
@@ -1624,20 +1615,9 @@ function exportStudyGuide() {
 el.exportAiBtn.addEventListener("click", exportStudyGuide);
 
 /* ---------------- AI panel helpers ---------------- */
-function getActiveTargetKey() {
-  if (state.isSplitMode && state.activePane === "secondary" && state.secondaryKey) {
-    return state.secondaryKey;
-  }
-  return state.activeKey;
-}
-
 function openAiPanel(title, showChatInput = false, panelType = null) {
   document.body.classList.add("ai-panel-open");
-  const targetKey = getActiveTargetKey();
-  const isSecondary = (state.isSplitMode && state.activePane === "secondary" && state.secondaryKey);
-  const paneBadge = isSecondary ? ` [Secondary: ${state.secondaryKey.split('/').pop().replace(/\.md$/i, '')}]` : "";
-  
-  el.aiPanelTitle.textContent = title + paneBadge;
+  el.aiPanelTitle.textContent = title;
   show(el.aiPanel, 'flex');
   show(el.exportAiBtn, 'inline-block');
   el.aiPanelContent.innerHTML = "";
@@ -1653,7 +1633,7 @@ function openAiPanel(title, showChatInput = false, panelType = null) {
   state.isGeneralChatActive = (panelType === 'general-chat');
 
   if (panelType) {
-    const key = state.isGeneralChatActive ? "$general" : targetKey;
+    const key = state.isGeneralChatActive ? "$general" : state.activeKey;
     if (key && state.aiCache[key]) {
       state.aiCache[key].activeType = panelType;
       saveAiCache();
@@ -1668,7 +1648,7 @@ function closeAiPanel() {
   hide(el.clearChatBtn);
   hide(el.exportAiBtn);
 
-  const key = state.isGeneralChatActive ? "$general" : getActiveTargetKey();
+  const key = state.isGeneralChatActive ? "$general" : state.activeKey;
   if (key && state.aiCache[key]) {
     state.aiCache[key].activeType = null;
     saveAiCache();
@@ -2883,14 +2863,13 @@ el.mindMapModalClose.addEventListener("click", () => {
 });
 
 el.mindMapBtn.addEventListener("click", async () => {
-  const targetKey = getActiveTargetKey();
-  if (!targetKey) return;
+  if (!state.activeKey) return;
   show(el.mindMapModal, 'flex');
   show(el.mindMapSpinner);
   el.mindMapContainer.innerHTML = "";
   setMindMapZoom(1.0);
   
-  const key = targetKey;
+  const key = state.activeKey;
   
   // Try local memory cache
   if (state.aiCache[key] && state.aiCache[key].mindmap) {
@@ -3076,22 +3055,20 @@ ${aggregatedContext}`;
 });
 
 /* ---------------- AI Exam Cheat Sheet Generator ---------------- */
-async function generateCheatSheet() {
-    const targetKey = getActiveTargetKey();
-    if (!targetKey) return;
-    openAiPanel("📄 1-Page Exam Cheat Sheet", false, 'cheatsheet');
+if (el.cheatSheetBtn) {
+  el.cheatSheetBtn.addEventListener("click", async () => {
+    if (!state.activeKey) return;
     
-    // Check local memory cache first
-    if (state.aiCache[targetKey] && state.aiCache[targetKey].cheatsheet) {
-      renderCheatSheetPanel(state.aiCache[targetKey].cheatsheet);
-      return;
-    }
+    show(el.cheatSheetModal, 'flex');
+    show(el.cheatSheetSpinner, 'flex');
+    hide(el.cheatSheetContent);
+    el.cheatSheetContent.innerHTML = "";
     
     try {
       const res = await fetch("/api/ai/cheatsheet", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ key: targetKey })
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ key: state.activeKey })
       });
       
       if (!res.ok) throw new Error(`Server returned ${res.status}`);
@@ -3320,9 +3297,8 @@ const autoGlossary = {
   },
 
   async fetchAndApply() {
-    const targetKey = getActiveTargetKey();
-    if (!targetKey) return;
-    const key = targetKey;
+    if (!state.activeKey) return;
+    const key = state.activeKey;
 
     // Check local memory cache first
     if (state.aiCache[key] && state.aiCache[key].glossary && state.aiCache[key].glossary.length) {
@@ -4701,26 +4677,10 @@ const highlights = {
    4. SPLIT SCREEN DUAL READER
    ================================================================ */
 const splitScreen = {
-  isSyncScroll: false,
-  isScrollingPrimary: false,
-  isScrollingSecondary: false,
-
   init() {
     if (el.splitModeBtn) {
       el.splitModeBtn.addEventListener("click", () => {
         this.toggle();
-      });
-    }
-
-    if (el.swapPanesBtn) {
-      el.swapPanesBtn.addEventListener("click", () => {
-        this.swapPanes();
-      });
-    }
-
-    if (el.syncScrollBtn) {
-      el.syncScrollBtn.addEventListener("click", () => {
-        this.toggleSyncScroll();
       });
     }
 
@@ -4734,9 +4694,6 @@ const splitScreen = {
         this.setActivePane("secondary");
       });
     }
-
-    this.setupSyncScrollListeners();
-    this.initSplitResizer();
   },
 
   toggle() {
@@ -4746,9 +4703,8 @@ const splitScreen = {
       el.splitModeBtn.classList.add("active");
       el.readerSplitWrapper.classList.add("split");
       show(el.secondaryPane);
-      show(el.splitResizer);
-      show(el.splitControlsGroup, 'flex');
       
+      // If there's no secondary file loaded yet, load current one or display instructions
       if (!state.secondaryKey) {
         el.contentSecondary.innerHTML = `<div style="text-align:center;padding:40px;color:var(--text-dim)">
           <h3>Secondary Reading Pane</h3>
@@ -4757,6 +4713,7 @@ const splitScreen = {
         show(el.contentSecondary);
       }
       
+      // Focus on secondary pane to invite user selection
       this.setActivePane("secondary");
     } else {
       el.splitModeBtn.classList.remove("active");
@@ -4764,15 +4721,11 @@ const splitScreen = {
       hide(el.secondaryPane);
       hide(el.contentSecondary);
       hide(el.readingStatsBarSecondary);
-      hide(el.splitResizer);
-      hide(el.splitControlsGroup);
       
       state.secondaryKey = null;
       this.setActivePane("primary");
       
-      if (el.primaryPane) el.primaryPane.style.flex = '';
-      if (el.secondaryPane) el.secondaryPane.style.flex = '';
-
+      // Update sidebar file highlights to single activeKey
       el.fileList.querySelectorAll(".file-item").forEach((item) => {
         if (item.dataset.key === state.activeKey) {
           item.classList.add("active");
@@ -4792,144 +4745,6 @@ const splitScreen = {
       if (el.secondaryPane) el.secondaryPane.classList.add("active");
       el.primaryPane.classList.remove("active");
     }
-  },
-
-  toggleSyncScroll() {
-    this.isSyncScroll = !this.isSyncScroll;
-    if (el.syncScrollBtn) {
-      el.syncScrollBtn.classList.toggle('active', this.isSyncScroll);
-    }
-  },
-
-  setupSyncScrollListeners() {
-    const pReader = el.primaryPane;
-    const sReader = el.secondaryPane;
-    if (!pReader || !sReader) return;
-
-    pReader.addEventListener('scroll', () => {
-      if (!state.isSplitMode || !this.isSyncScroll || this.isScrollingSecondary) return;
-      this.isScrollingPrimary = true;
-      const maxP = pReader.scrollHeight - pReader.clientHeight;
-      if (maxP > 0) {
-        const ratio = pReader.scrollTop / maxP;
-        const maxS = sReader.scrollHeight - sReader.clientHeight;
-        sReader.scrollTop = ratio * maxS;
-      }
-      setTimeout(() => { this.isScrollingPrimary = false; }, 50);
-    });
-
-    sReader.addEventListener('scroll', () => {
-      if (!state.isSplitMode || !this.isSyncScroll || this.isScrollingPrimary) return;
-      this.isScrollingSecondary = true;
-      const maxS = sReader.scrollHeight - sReader.clientHeight;
-      if (maxS > 0) {
-        const ratio = sReader.scrollTop / maxS;
-        const maxP = pReader.scrollHeight - pReader.clientHeight;
-        pReader.scrollTop = ratio * maxP;
-      }
-      setTimeout(() => { this.isScrollingSecondary = false; }, 50);
-    });
-  },
-
-  swapPanes() {
-    if (!state.isSplitMode || !state.secondaryKey) return;
-
-    const tempKey = state.activeKey;
-    state.activeKey = state.secondaryKey;
-    state.secondaryKey = tempKey;
-
-    const tempHtml = el.content.innerHTML;
-    el.content.innerHTML = el.contentSecondary.innerHTML;
-    el.contentSecondary.innerHTML = tempHtml;
-
-    updateReadingStats(el.content.textContent);
-    updateReadingStatsSecondary(el.contentSecondary.textContent);
-
-    el.fileList.querySelectorAll(".file-item").forEach((item) => {
-      const k = item.dataset.key;
-      if (k === state.activeKey || k === state.secondaryKey) {
-        item.classList.add("active");
-      } else {
-        item.classList.remove("active");
-      }
-    });
-  },
-
-  initSplitResizer() {
-    const resizer = el.splitResizer;
-    const wrapper = el.readerSplitWrapper;
-    const pPane = el.primaryPane;
-    const sPane = el.secondaryPane;
-
-    if (!resizer || !wrapper || !pPane || !sPane) return;
-
-    let isResizing = false;
-
-    const startResize = (e) => {
-      e.preventDefault();
-      isResizing = true;
-      resizer.classList.add('dragging');
-      document.body.style.cursor = 'col-resize';
-      document.body.style.userSelect = 'none';
-    };
-
-    const doResize = (e) => {
-      if (!isResizing) return;
-      const clientX = e.touches ? e.touches[0].clientX : e.clientX;
-      const rect = wrapper.getBoundingClientRect();
-      const offsetX = clientX - rect.left;
-      const totalWidth = rect.width;
-      let percentage = (offsetX / totalWidth) * 100;
-      percentage = Math.max(20, Math.min(80, percentage));
-
-      pPane.style.flex = `0 0 ${percentage}%`;
-      sPane.style.flex = `0 0 ${100 - percentage}%`;
-    };
-
-    const stopResize = () => {
-      if (isResizing) {
-        isResizing = false;
-        resizer.classList.remove('dragging');
-        document.body.style.cursor = '';
-        document.body.style.userSelect = '';
-      }
-    };
-
-    resizer.addEventListener('mousedown', startResize);
-    resizer.addEventListener('touchstart', startResize, { passive: false });
-
-    document.addEventListener('mousemove', doResize);
-    document.addEventListener('touchmove', doResize, { passive: false });
-
-    document.addEventListener('mouseup', stopResize);
-    document.addEventListener('touchend', stopResize);
-  },
-
-  openSecondaryWithMarkdown(title, mdText) {
-    if (!state.isSplitMode) {
-      this.toggle();
-    }
-    
-    state.secondaryKey = `translated_${Date.now()}`;
-    const renderedHtml = marked.parse(mdText);
-    el.contentSecondary.innerHTML = renderedHtml;
-    show(el.contentSecondary);
-    show(el.readingStatsBarSecondary);
-    updateReadingStatsSecondary(mdText);
-
-    if (window.renderMathInElement) {
-      renderMathInElement(el.contentSecondary, {
-        delimiters: [
-          { left: "$$", right: "$$", display: true },
-          { left: "$", right: "$", display: false },
-          { left: "\\(", right: "\\)", display: false },
-          { left: "\\[", right: "\\]", display: true }
-        ],
-        throwOnError: false
-      });
-    }
-
-    this.setActivePane("secondary");
   }
 };
 

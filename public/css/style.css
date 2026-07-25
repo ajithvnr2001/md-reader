@@ -2415,27 +2415,37 @@ mark[data-hl-id]:hover { filter: brightness(1.15); }
 }
 
 /* ---------- Typography Overrides ---------- */
-.font-family-inter {
-  font-family: 'Inter', sans-serif !important;
+html.font-family-inter, .font-family-inter {
+  --font-main: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
 }
-.font-family-roboto {
-  font-family: 'Roboto', sans-serif !important;
+html.font-family-roboto, .font-family-roboto {
+  --font-main: 'Roboto', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif !important;
 }
-.font-family-merriweather {
-  font-family: 'Merriweather', serif !important;
+html.font-family-merriweather, .font-family-merriweather {
+  --font-main: 'Merriweather', Georgia, serif !important;
 }
-.font-family-lexend {
-  font-family: 'Lexend', sans-serif !important;
+html.font-family-lexend, .font-family-lexend {
+  --font-main: 'Lexend', -apple-system, BlinkMacSystemFont, sans-serif !important;
 }
-.font-family-dyslexic {
-  font-family: 'OpenDyslexic', sans-serif !important;
+html.font-family-dyslexic, .font-family-dyslexic {
+  --font-main: 'OpenDyslexic', sans-serif !important;
 }
 
+body,
+.reader,
+#content,
 .markdown-body,
 .markdown-body p,
 .markdown-body li,
 .markdown-body td,
-.markdown-body th {
+.markdown-body th,
+.markdown-body h1,
+.markdown-body h2,
+.markdown-body h3,
+.markdown-body h4,
+.markdown-body h5,
+.markdown-body h6 {
+  font-family: var(--font-main) !important;
   line-height: var(--line-height, 1.6) !important;
 }
 
@@ -2443,62 +2453,25 @@ mark[data-hl-id]:hover { filter: brightness(1.15); }
 .reader-split-wrapper.split {
   display: flex !important;
   flex-direction: row;
-  align-items: stretch;
-  gap: 0;
+  gap: 16px;
   width: 100%;
-  position: relative;
 }
 .reader-split-wrapper.split .split-pane {
-  flex: 1 1 0%;
-  min-width: 180px;
+  flex: 1;
+  min-width: 0;
   border: 2px solid transparent;
   border-radius: var(--radius);
   padding: 16px;
   background: var(--bg-elevated);
   transition: border-color var(--transition), box-shadow var(--transition);
-  overflow-y: auto;
 }
 .reader-split-wrapper.split .split-pane.active {
   border-color: var(--accent);
   box-shadow: var(--glow);
 }
-
-.split-resizer {
-  width: 12px;
-  margin: 0 4px;
-  cursor: col-resize;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  user-select: none;
-  touch-action: none;
-  z-index: 10;
-}
-.split-resizer-line {
-  width: 4px;
-  height: 48px;
-  background: var(--border);
-  border-radius: 2px;
-  transition: background 0.2s, height 0.2s;
-}
-.split-resizer:hover .split-resizer-line,
-.split-resizer.dragging .split-resizer-line {
-  background: var(--accent);
-  height: 80px;
-}
-
-#syncScrollBtn.active {
-  color: var(--accent);
-  background: var(--accent-bg);
-  border-color: var(--accent);
-}
-
 @media (max-width: 767px) {
   .reader-split-wrapper.split {
     flex-direction: column !important;
-  }
-  .split-resizer {
-    display: none !important;
   }
 }
 

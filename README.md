@@ -46,7 +46,7 @@
 - **🎯 Focus / Zen Mode & Typewriter Scrolling**: Full-screen, distraction-free reading environment that hides UI chrome and toolbars. Features active-paragraph focus with smooth scrolling and dimming of non-active text.
 - **🎨 8 Eye-Care Themes, 5 Accent Pickers & Dynamic Typography Engine**: Personalize your study environment with 8 base themes (Night, Day, Sepia, OLED Black, Forest Sage, Cafe Latte, Nord Frost, Sakura Rose) + 5 Accent Swatches (Indigo, Emerald, Sky, Rose, Amber) + 5 Font Families (Inter, Roboto, Merriweather Serif, Lexend Accessible, OpenDyslexic) + 4 Line Spacing Presets (1.4x to 2.0x).
 - **📐 Resizable & Expandable AI Side Panel**: Drag-to-resize handle (300px to 85vw) with 1-click expand/collapse toggle for comfortable side-by-side study workflows.
-- **📐 Split-Screen Dual Reader Studio with Synchronized Scroll, Drag Resizer & Swap Panes**: Compare two Markdown notes side-by-side on desktop/tablets, featuring **🔗 Synchronized Dual Scroll Toggle**, **↔️ Resizable Drag Splitter Handle (20/80 to 80/20)**, **⇄ Swap Panes Button**, and **Contextual AI Execution** (all AI tools automatically target whichever pane—Primary or Secondary—is currently active with `[Secondary: file.md]` badges).
+- **📐 Split-Screen Dual Reader**: Compare two Markdown notes side-by-side on desktop/tablets, with adaptive vertical stacking on mobile viewports.
 - **Dynamic Accent Color Picker**: Select custom HSL color accents (Indigo, Emerald, Sky, Rose, Amber) with fixed mobile-ready popovers.
 - **Adjustable Typography**: Font size scaling controls (A+ / A-) for comfortable reading on any screen size.
 - **Mobile Responsive Layout**: Optimized touch targets, swipeable bars, and adaptive popovers for ultra-narrow mobile viewports.

@@ -542,37 +542,21 @@ el.fontDownBtn.addEventListener("click", () => {
   applyFontScale();
 });
 
-const FONT_MAP = {
-  inter: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
-  roboto: "'Roboto', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
-  merriweather: "'Merriweather', Georgia, serif",
-  lexend: "'Lexend', -apple-system, BlinkMacSystemFont, sans-serif",
-  dyslexic: "'OpenDyslexic', sans-serif"
-};
-
 function applyFontFamily(font) {
   state.activeFont = font || "inter";
   localStorage.setItem("md-reader-font-family", state.activeFont);
   
-  const fontValue = FONT_MAP[state.activeFont] || FONT_MAP.inter;
-  document.documentElement.style.setProperty("--font-main", fontValue, "important");
-  if (document.body) {
-    document.body.style.setProperty("font-family", fontValue, "important");
-  }
-
-  const fontClasses = [
+  // Remove existing font classes on documentElement
+  document.documentElement.classList.remove(
     "font-family-inter", 
     "font-family-roboto", 
     "font-family-merriweather", 
     "font-family-lexend", 
     "font-family-dyslexic"
-  ];
+  );
   
-  document.documentElement.classList.remove(...fontClasses);
-  if (document.body) document.body.classList.remove(...fontClasses);
-  
+  // Add new font class
   document.documentElement.classList.add(`font-family-${state.activeFont}`);
-  if (document.body) document.body.classList.add(`font-family-${state.activeFont}`);
   
   if (el.fontFamilySelect) {
     el.fontFamilySelect.value = state.activeFont;

@@ -1079,9 +1079,8 @@ function renderTreeHtml(node, path = "") {
     const count = countFiles(childNode);
     
     const isParentOfActive = state.activeKey && state.activeKey.startsWith(fullPath + '/');
-    const isSearching = el.searchInput.value && el.searchInput.value.trim().length > 0;
-    const isTopLevel = !path;
-    const collapsedClass = (isParentOfActive || isSearching || isTopLevel) ? "" : "collapsed";
+    const isSearching = el.searchInput && el.searchInput.value && el.searchInput.value.trim().length > 0;
+    const collapsedClass = (isParentOfActive || isSearching) ? "" : "collapsed";
 
     const dragOverHandlers = `ondragover="event.preventDefault(); this.classList.add('drag-over');" ondragenter="event.preventDefault(); this.classList.add('drag-over');" ondragleave="this.classList.remove('drag-over');" ondrop="handleFileDrop(event, '${fullPath}')"`;
 

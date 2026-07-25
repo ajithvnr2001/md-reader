@@ -555,20 +555,24 @@ function applyFontFamily(font) {
   localStorage.setItem("md-reader-font-family", state.activeFont);
   
   const fontValue = FONT_MAP[state.activeFont] || FONT_MAP.inter;
-  document.documentElement.style.setProperty("--font-main", fontValue);
-  document.body.style.fontFamily = fontValue;
-  
-  // Remove existing font classes on documentElement
-  document.documentElement.classList.remove(
+  document.documentElement.style.setProperty("--font-main", fontValue, "important");
+  if (document.body) {
+    document.body.style.setProperty("font-family", fontValue, "important");
+  }
+
+  const fontClasses = [
     "font-family-inter", 
     "font-family-roboto", 
     "font-family-merriweather", 
     "font-family-lexend", 
     "font-family-dyslexic"
-  );
+  ];
   
-  // Add new font class
+  document.documentElement.classList.remove(...fontClasses);
+  if (document.body) document.body.classList.remove(...fontClasses);
+  
   document.documentElement.classList.add(`font-family-${state.activeFont}`);
+  if (document.body) document.body.classList.add(`font-family-${state.activeFont}`);
   
   if (el.fontFamilySelect) {
     el.fontFamilySelect.value = state.activeFont;

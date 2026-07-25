@@ -2415,25 +2415,51 @@ mark[data-hl-id]:hover { filter: brightness(1.15); }
 }
 
 /* ---------- Typography Overrides ---------- */
-html.font-family-inter, .font-family-inter {
-  --font-main: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
-}
-html.font-family-roboto, .font-family-roboto {
-  --font-main: 'Roboto', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif !important;
-}
-html.font-family-merriweather, .font-family-merriweather {
-  --font-main: 'Merriweather', Georgia, serif !important;
-}
-html.font-family-lexend, .font-family-lexend {
-  --font-main: 'Lexend', -apple-system, BlinkMacSystemFont, sans-serif !important;
-}
-html.font-family-dyslexic, .font-family-dyslexic {
-  --font-main: 'OpenDyslexic', sans-serif !important;
+html.font-family-inter, body.font-family-inter,
+.font-family-inter .reader, .font-family-inter #content, .font-family-inter #contentSecondary,
+.font-family-inter .markdown-body, .font-family-inter .markdown-body p, .font-family-inter .markdown-body li,
+.font-family-inter .markdown-body td, .font-family-inter .markdown-body th, .font-family-inter .markdown-body h1,
+.font-family-inter .markdown-body h2, .font-family-inter .markdown-body h3, .font-family-inter .markdown-body h4,
+.font-family-inter .markdown-body h5, .font-family-inter .markdown-body h6 {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
 }
 
-body,
-.reader,
-#content,
+html.font-family-roboto, body.font-family-roboto,
+.font-family-roboto .reader, .font-family-roboto #content, .font-family-roboto #contentSecondary,
+.font-family-roboto .markdown-body, .font-family-roboto .markdown-body p, .font-family-roboto .markdown-body li,
+.font-family-roboto .markdown-body td, .font-family-roboto .markdown-body th, .font-family-roboto .markdown-body h1,
+.font-family-roboto .markdown-body h2, .font-family-roboto .markdown-body h3, .font-family-roboto .markdown-body h4,
+.font-family-roboto .markdown-body h5, .font-family-roboto .markdown-body h6 {
+  font-family: 'Roboto', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif !important;
+}
+
+html.font-family-merriweather, body.font-family-merriweather,
+.font-family-merriweather .reader, .font-family-merriweather #content, .font-family-merriweather #contentSecondary,
+.font-family-merriweather .markdown-body, .font-family-merriweather .markdown-body p, .font-family-merriweather .markdown-body li,
+.font-family-merriweather .markdown-body td, .font-family-merriweather .markdown-body th, .font-family-merriweather .markdown-body h1,
+.font-family-merriweather .markdown-body h2, .font-family-merriweather .markdown-body h3, .font-family-merriweather .markdown-body h4,
+.font-family-merriweather .markdown-body h5, .font-family-merriweather .markdown-body h6 {
+  font-family: 'Merriweather', Georgia, serif !important;
+}
+
+html.font-family-lexend, body.font-family-lexend,
+.font-family-lexend .reader, .font-family-lexend #content, .font-family-lexend #contentSecondary,
+.font-family-lexend .markdown-body, .font-family-lexend .markdown-body p, .font-family-lexend .markdown-body li,
+.font-family-lexend .markdown-body td, .font-family-lexend .markdown-body th, .font-family-lexend .markdown-body h1,
+.font-family-lexend .markdown-body h2, .font-family-lexend .markdown-body h3, .font-family-lexend .markdown-body h4,
+.font-family-lexend .markdown-body h5, .font-family-lexend .markdown-body h6 {
+  font-family: 'Lexend', -apple-system, BlinkMacSystemFont, sans-serif !important;
+}
+
+html.font-family-dyslexic, body.font-family-dyslexic,
+.font-family-dyslexic .reader, .font-family-dyslexic #content, .font-family-dyslexic #contentSecondary,
+.font-family-dyslexic .markdown-body, .font-family-dyslexic .markdown-body p, .font-family-dyslexic .markdown-body li,
+.font-family-dyslexic .markdown-body td, .font-family-dyslexic .markdown-body th, .font-family-dyslexic .markdown-body h1,
+.font-family-dyslexic .markdown-body h2, .font-family-dyslexic .markdown-body h3, .font-family-dyslexic .markdown-body h4,
+.font-family-dyslexic .markdown-body h5, .font-family-dyslexic .markdown-body h6 {
+  font-family: 'OpenDyslexic', 'Comic Sans MS', sans-serif !important;
+}
+
 .markdown-body,
 .markdown-body p,
 .markdown-body li,
@@ -2445,7 +2471,6 @@ body,
 .markdown-body h4,
 .markdown-body h5,
 .markdown-body h6 {
-  font-family: var(--font-main) !important;
   line-height: var(--line-height, 1.6) !important;
 }
 

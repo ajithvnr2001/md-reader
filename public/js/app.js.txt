@@ -3287,7 +3287,18 @@ const autoGlossary = {
 
   async fetchAndApply() {
     if (!state.activeKey) return;
+    const key = state.activeKey;
+
+    // Check local memory cache first
+    if (state.aiCache[key] && state.aiCache[key].glossary && state.aiCache[key].glossary.length) {
+      this.terms = state.aiCache[key].glossary;
+      this.applyToDOM();
+      this.renderGlossaryPanel();
+      return;
+    }
     
+    openAiPanel("🔍 Extracting Glossary Terms...", false, 'glossary');
+    show(el.aiSpinner, 'flex');
     const btn = el.autoGlossaryBtn;
     const originalText = btn.innerHTML;
     btn.innerHTML = `<span class="spinner-ring" style="width:12px;height:12px;display:inline-block"></span> Extracting...`;
@@ -3296,37 +3307,118 @@ const autoGlossary = {
       const res = await fetch("/api/ai/glossary", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ key: state.activeKey })
+        body: JSON.stringify({ key })
       });
       
+      hide(el.aiSpinner);
       if (!res.ok) throw new Error(`Server returned ${res.status}`);
       const data = await res.json();
       this.terms = data.terms || [];
       
       if (this.terms.length > 0) {
+        if (!state.aiCache[key]) state.aiCache[key] = {};
+        state.aiCache[key].glossary = this.terms;
+        saveAiCache();
+
         this.applyToDOM();
-        gamification.awardXp(10, 'glossary');
+        this.renderGlossaryPanel();
+        gamification.awardXp(15, 'glossary');
+      } else {
+        el.aiPanelContent.innerHTML = `<div style="padding:16px; color:var(--text-dim)">No specialized jargon or terms detected in this document.</div>`;
       }
     } catch(err) {
+      hide(el.aiSpinner);
       alert(`Auto-Glossary error: ${err.message}`);
     } finally {
       btn.innerHTML = originalText;
     }
   },
 
+  renderGlossaryPanel() {
+    if (!this.terms.length) return;
+    openAiPanel("🔍 Auto-Glossary Vocabulary", false, 'glossary');
+
+    let rowsHtml = this.terms.map(t => `
+      <div style="padding:12px; border:1px solid var(--border); border-radius:var(--radius); background:var(--bg-card); margin-bottom:8px; transition:all 0.2s">
+        <div style="font-weight:700; color:var(--accent); font-size:0.92rem; margin-bottom:4px; display:flex; align-items:center; justify-content:space-between">
+          <span>🔍 ${t.term}</span>
+        </div>
+        <div style="font-size:0.85rem; color:var(--text); line-height:1.5">
+          ${t.definition}
+        </div>
+      </div>
+    `).join('');
+
+    el.aiPanelContent.innerHTML = `
+      <div style="padding:16px">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; padding-bottom:10px; border-bottom:1px solid var(--border)">
+          <span style="font-size:0.82rem; font-weight:700; color:var(--accent); text-transform:uppercase; letter-spacing:0.05em">
+            🔍 Extracted Jargon (${this.terms.length} Terms)
+          </span>
+          <span style="font-size:0.75rem; color:var(--text-dim)">
+            Hover/Tap terms in reader to view tooltips
+          </span>
+        </div>
+        <div>
+          ${rowsHtml}
+        </div>
+      </div>
+    `;
+  },
+
   applyToDOM() {
     if (!this.terms.length || !el.content) return;
     
-    const paragraphs = el.content.querySelectorAll('p, li, td');
-    paragraphs.forEach(p => {
-      let html = p.innerHTML;
-      this.terms.forEach(item => {
-        const regex = new RegExp(`\\b(${item.term})\\b`, 'gi');
-        html = html.replace(regex, (match) => {
-          return `<span class="glossary-term" data-def="${item.definition.replace(/"/g, '&quot;')}">${match}</span>`;
-        });
+    // Remove previous glossary spans to prevent duplication
+    const oldSpans = el.content.querySelectorAll('.glossary-term');
+    oldSpans.forEach(span => {
+      const parent = span.parentNode;
+      if (parent) {
+        parent.replaceChild(document.createTextNode(span.textContent), span);
+        parent.normalize();
+      }
+    });
+
+    // Safe Text Node replacement using TreeWalker
+    this.terms.forEach(item => {
+      const regex = new RegExp(`\\b(${item.term})\\b`, 'i');
+      const walker = document.createTreeWalker(el.content, NodeFilter.SHOW_TEXT, {
+        acceptNode(node) {
+          if (!node.nodeValue || !node.nodeValue.trim()) return NodeFilter.FILTER_SKIP;
+          const parentTag = node.parentElement ? node.parentElement.tagName.toLowerCase() : '';
+          if (['script', 'style', 'code', 'pre', 'a'].includes(parentTag)) return NodeFilter.FILTER_SKIP;
+          if (node.parentElement && node.parentElement.classList.contains('glossary-term')) return NodeFilter.FILTER_SKIP;
+          return regex.test(node.nodeValue) ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_SKIP;
+        }
       });
-      p.innerHTML = html;
+
+      const nodesToReplace = [];
+      while (walker.nextNode()) {
+        nodesToReplace.push(walker.currentNode);
+      }
+
+      nodesToReplace.forEach(node => {
+        const match = regex.exec(node.nodeValue);
+        if (!match) return;
+
+        const before = node.nodeValue.substring(0, match.index);
+        const matchedText = match[0];
+        const after = node.nodeValue.substring(match.index + matchedText.length);
+
+        const span = document.createElement('span');
+        span.className = 'glossary-term';
+        span.dataset.def = item.definition;
+        span.textContent = matchedText;
+
+        const frag = document.createDocumentFragment();
+        if (before) frag.appendChild(document.createTextNode(before));
+        frag.appendChild(span);
+        if (after) frag.appendChild(document.createTextNode(after));
+
+        if (node.parentNode) {
+          node.parentNode.replaceChild(frag, node);
+        }
+      });
     });
 
     // Attach tooltip events

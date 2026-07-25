@@ -25,6 +25,7 @@ const state = {
   isSplitMode: false,
   activePane: "primary",
   secondaryKey: null,
+  folderStateMap: JSON.parse(localStorage.getItem("md-reader-folder-state") || "{}"),
 };
 
 function saveAiCache() {
@@ -1079,7 +1080,17 @@ function buildTree(files) {
     current.files.push({ ...f, name });
   }
   return root;
-}
+window.toggleFolderHeader = function(headerElem, fullPath) {
+  headerElem.classList.toggle('collapsed');
+  if (headerElem.nextElementSibling) {
+    headerElem.nextElementSibling.classList.toggle('collapsed');
+  }
+  if (!state.folderStateMap) state.folderStateMap = {};
+  state.folderStateMap[fullPath] = !headerElem.classList.contains('collapsed');
+  try {
+    localStorage.setItem("md-reader-folder-state", JSON.stringify(state.folderStateMap));
+  } catch(e) {}
+};
 
 function renderTreeHtml(node, path = "") {
   let html = "";
@@ -1093,15 +1104,21 @@ function renderTreeHtml(node, path = "") {
     const countFiles = (n) => n.files.length + Object.values(n.folders).reduce((acc, c) => acc + countFiles(c), 0);
     const count = countFiles(childNode);
     
-    const isParentOfActive = state.activeKey && state.activeKey.startsWith(fullPath + '/');
+    const isTopLevel = !path;
+    const isParentOfActive = (state.activeKey && state.activeKey.startsWith(fullPath + '/')) || (state.secondaryKey && state.secondaryKey.startsWith(fullPath + '/'));
     const isSearching = el.searchInput && el.searchInput.value && el.searchInput.value.trim().length > 0;
-    const collapsedClass = (isParentOfActive || isSearching) ? "" : "collapsed";
+    
+    let isExpanded = isTopLevel || isParentOfActive || isSearching;
+    if (state.folderStateMap && fullPath in state.folderStateMap) {
+      isExpanded = state.folderStateMap[fullPath];
+    }
+    const collapsedClass = isExpanded ? "" : "collapsed";
 
     const dragOverHandlers = `ondragover="event.preventDefault(); this.classList.add('drag-over');" ondragenter="event.preventDefault(); this.classList.add('drag-over');" ondragleave="this.classList.remove('drag-over');" ondrop="handleFileDrop(event, '${fullPath}')"`;
 
     html += `
       <div class="folder-section">
-        <div class="folder-header ${collapsedClass}" data-path="${fullPath}" ${dragOverHandlers} onclick="this.classList.toggle('collapsed'); this.nextElementSibling.classList.toggle('collapsed')">
+        <div class="folder-header ${collapsedClass}" data-path="${fullPath}" ${dragOverHandlers} onclick="toggleFolderHeader(this, '${fullPath}')">
           <svg class="folder-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
           ${fName}

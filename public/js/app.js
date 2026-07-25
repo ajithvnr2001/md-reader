@@ -183,6 +183,11 @@ const el = {
   mindMapModalClose: document.getElementById("mindMapModalClose"),
   mindMapSpinner: document.getElementById("mindMapSpinner"),
   mindMapContainer: document.getElementById("mindMapContainer"),
+  mindMapZoomIn: document.getElementById("mindMapZoomIn"),
+  mindMapZoomOut: document.getElementById("mindMapZoomOut"),
+  mindMapZoomReset: document.getElementById("mindMapZoomReset"),
+  mindMapZoomLevel: document.getElementById("mindMapZoomLevel"),
+  mindMapExportSvg: document.getElementById("mindMapExportSvg"),
 
   // Workspace Search & Pomodoro refs
   workspaceSearchInput: document.getElementById("workspaceSearchInput"),
@@ -2735,6 +2740,114 @@ el.fileList.addEventListener("drop", async (e) => {
 });
 
 /* ---------------- Mind Map Logic ---------------- */
+let currentMindMapZoom = 1.0;
+let isMindMapDragging = false;
+let mindMapStartX = 0, mindMapStartY = 0;
+let mindMapScrollLeft = 0, mindMapScrollTop = 0;
+
+function setMindMapZoom(zoom) {
+  currentMindMapZoom = Math.max(0.3, Math.min(3.0, zoom));
+  if (el.mindMapZoomLevel) {
+    el.mindMapZoomLevel.textContent = `${Math.round(currentMindMapZoom * 100)}%`;
+  }
+  const svg = el.mindMapContainer.querySelector('svg');
+  if (svg) {
+    svg.style.transition = 'transform 0.2s ease-out';
+    svg.style.transform = `scale(${currentMindMapZoom})`;
+    svg.style.transformOrigin = 'center center';
+  }
+}
+
+function initMindMapControls() {
+  if (el.mindMapZoomIn) {
+    el.mindMapZoomIn.addEventListener('click', () => setMindMapZoom(currentMindMapZoom + 0.2));
+  }
+  if (el.mindMapZoomOut) {
+    el.mindMapZoomOut.addEventListener('click', () => setMindMapZoom(currentMindMapZoom - 0.2));
+  }
+  if (el.mindMapZoomReset) {
+    el.mindMapZoomReset.addEventListener('click', () => setMindMapZoom(1.0));
+  }
+
+  // Mouse wheel zoom inside container
+  if (el.mindMapContainer) {
+    el.mindMapContainer.addEventListener('wheel', (e) => {
+      e.preventDefault();
+      const delta = e.deltaY < 0 ? 0.15 : -0.15;
+      setMindMapZoom(currentMindMapZoom + delta);
+    }, { passive: false });
+
+    // Drag to Pan container
+    el.mindMapContainer.addEventListener('mousedown', (e) => {
+      if (e.target.closest('button')) return;
+      isMindMapDragging = true;
+      el.mindMapContainer.style.cursor = 'grabbing';
+      mindMapStartX = e.pageX - el.mindMapContainer.offsetLeft;
+      mindMapStartY = e.pageY - el.mindMapContainer.offsetTop;
+      mindMapScrollLeft = el.mindMapContainer.scrollLeft;
+      mindMapScrollTop = el.mindMapContainer.scrollTop;
+    });
+
+    el.mindMapContainer.addEventListener('mouseleave', () => {
+      isMindMapDragging = false;
+      el.mindMapContainer.style.cursor = 'grab';
+    });
+
+    el.mindMapContainer.addEventListener('mouseup', () => {
+      isMindMapDragging = false;
+      el.mindMapContainer.style.cursor = 'grab';
+    });
+
+    el.mindMapContainer.addEventListener('mousemove', (e) => {
+      if (!isMindMapDragging) return;
+      e.preventDefault();
+      const x = e.pageX - el.mindMapContainer.offsetLeft;
+      const y = e.pageY - el.mindMapContainer.offsetTop;
+      const walkX = (x - mindMapStartX) * 1.5;
+      const walkY = (y - mindMapStartY) * 1.5;
+      el.mindMapContainer.scrollLeft = mindMapScrollLeft - walkX;
+      el.mindMapContainer.scrollTop = mindMapScrollTop - walkY;
+    });
+  }
+
+  // Download SVG Export
+  if (el.mindMapExportSvg) {
+    el.mindMapExportSvg.addEventListener('click', () => {
+      const svg = el.mindMapContainer.querySelector('svg');
+      if (!svg) {
+        alert("No SVG diagram available to export.");
+        return;
+      }
+
+      const cloneSvg = svg.cloneNode(true);
+      cloneSvg.style.transform = 'none'; // reset scale transform for export
+      cloneSvg.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+
+      const serializer = new XMLSerializer();
+      let svgString = serializer.serializeToString(cloneSvg);
+
+      // Add XML declaration
+      if (!svgString.match(/^<\?xml/)) {
+        svgString = '<?xml version="1.0" standalone="no"?>\n' + svgString;
+      }
+
+      const blob = new Blob([svgString], { type: 'image/svg+xml;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const docTitle = (state.activeKey || 'document').replace(/[^a-zA-Z0-9_\.-]/g, '_');
+      
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `mind-map-${docTitle}.svg`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    });
+  }
+}
+
+initMindMapControls();
+
 el.mindMapModalClose.addEventListener("click", () => {
   hide(el.mindMapModal);
 });
@@ -2744,6 +2857,7 @@ el.mindMapBtn.addEventListener("click", async () => {
   show(el.mindMapModal, 'flex');
   show(el.mindMapSpinner);
   el.mindMapContainer.innerHTML = "";
+  setMindMapZoom(1.0);
   
   const key = state.activeKey;
   
@@ -2754,7 +2868,6 @@ el.mindMapBtn.addEventListener("click", async () => {
   }
   
   try {
-    // Generate new mindmap from Gemini using the chat endpoint
     const res = await fetch("/api/ai/chat", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -2772,11 +2885,9 @@ el.mindMapBtn.addEventListener("click", async () => {
     if (!res.ok) throw new Error("API call failed");
     const data = await res.json();
     
-    // Extract code block
     const match = data.reply.match(/```mermaid([\s\S]*?)```/);
     const mermaidCode = match ? match[1].trim() : data.reply.trim();
     
-    // Save to cache
     if (!state.aiCache[key]) state.aiCache[key] = {};
     state.aiCache[key].mindmap = mermaidCode;
     saveAiCache();
@@ -2793,6 +2904,8 @@ function renderMermaidMap(code) {
     if (window.mermaid) {
       mermaid.render("mermaid-graph-svg-" + Date.now(), code).then(({ svg }) => {
         el.mindMapContainer.innerHTML = svg;
+        el.mindMapContainer.style.cursor = 'grab';
+        setMindMapZoom(1.0);
         hide(el.mindMapSpinner);
       }).catch(err => {
         showMermaidFallback(code, err.message);

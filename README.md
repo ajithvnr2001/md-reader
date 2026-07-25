@@ -21,7 +21,7 @@
 - **🧠 Interactive Explainer & Mermaid.js Flowcharts**: Explain complex concepts with auto-generated, interactive **Mermaid.js** flowcharts and architecture diagrams.
 - **📝 Interactive Quizzes**: Generate 5-question multiple-choice quizzes with live scoring and explanations.
 - **🗂️ Flashcard Generator**: Produce study flashcards for active recall and revision.
-- **🗺️ Mind Map Generator**: Convert document text into a visual, hierarchical node diagram.
+- **🗺️ Mind Map Generator & Interactive SVG Studio**: Convert document text into a visual, hierarchical node diagram with interactive **Zoom (+/-)**, **Mouse Wheel Scaling**, **Drag-to-Pan**, and **1-Click SVG Export** for presentation slides.
 - **📄 1-Page Exam Cheat Sheet**: Compress all definitions, code syntax, formulas, and rules into a 1-page print-ready reference sheet.
 - **🔍 AI Auto-Glossary**: Extract 8 to 15 key technical terms and display floating AI definition tooltips when hovering or tapping jargon in notes.
 - **🌐 AI Context-Aware Full Document Translator**: Complete line-by-line document translation into 17+ languages (9 Indian languages: Tamil 🇮🇳, Hindi 🇮🇳, Telugu 🇮🇳, Malayalam 🇮🇳, Kannada 🇮🇳, Bengali 🇮🇳, Marathi 🇮🇳, Gujarati 🇮🇳, Punjabi 🇮🇳 + Spanish 🇪🇸, French 🇫🇷, German 🇩🇪, Japanese 🇯🇵, Chinese 🇨🇳, Portuguese 🇵🇹, Italian 🇮🇹, Russian 🇷🇺). Enforces natural modern everyday phrasing (avoids archaic Senthamizh/formal textbook jargon), preserves code/math blocks, provides everyday context vocabulary tables, and supports **1-Click Side-by-Side Dual Reader View**.

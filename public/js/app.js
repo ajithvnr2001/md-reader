@@ -67,7 +67,8 @@ const el = {
   aiPanelResizeHandle: document.getElementById("aiPanelResizeHandle"),
   aiPanelExpandBtn: document.getElementById("aiPanelExpandBtn"),
   zenModeBtn: document.getElementById("zenModeBtn"),
-  exitZenBtn: document.getElementById("exitZenBtn"),
+  sidebarExpandBtn: document.getElementById("sidebarExpandBtn"),
+  sidebarResizeHandle: document.getElementById("sidebarResizeHandle"),
   
   // Upload modal refs
   uploadToggleBtn: document.getElementById("uploadToggleBtn"),
@@ -1781,6 +1782,104 @@ el.aiPanelClose.addEventListener("click", closeAiPanel);
   // Re-bind close button to the wrapped version
   el.aiPanelClose.removeEventListener('click', origClose);
   el.aiPanelClose.addEventListener('click', closeAiPanel);
+})();
+
+/* ---------------- Sidebar / Folder Panel Resizing & Expand ---------------- */
+(function initSidebarResize() {
+  const sidebar = el.sidebar;
+  const handle = el.sidebarResizeHandle;
+  const expandBtn = el.sidebarExpandBtn;
+  const DEFAULT_WIDTH = 280;
+  const EXPANDED_WIDTH = 480;
+  let isExpanded = false;
+  let isDragging = false;
+  let startX = 0;
+  let startWidth = 0;
+
+  // Restore saved width from localStorage
+  const savedWidth = localStorage.getItem("md-reader-sidebar-width");
+  if (savedWidth && sidebar && window.innerWidth >= 900) {
+    sidebar.style.width = savedWidth + 'px';
+    if (parseInt(savedWidth, 10) >= 420) {
+      isExpanded = true;
+      sidebar.classList.add('expanded');
+    }
+  }
+
+  // Icons for expand / shrink
+  const expandIcon = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>';
+  const shrinkIcon = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 14 10 14 10 20"/><polyline points="20 10 14 10 14 4"/><line x1="14" y1="10" x2="21" y2="3"/><line x1="3" y1="21" x2="10" y2="14"/></svg>';
+
+  if (expandBtn) {
+    expandBtn.innerHTML = isExpanded ? shrinkIcon : expandIcon;
+    expandBtn.title = isExpanded ? 'Shrink Folder Panel' : 'Expand Folder Panel';
+  }
+
+  if (handle && sidebar) {
+    // Mouse drag resize
+    handle.addEventListener('mousedown', function(e) {
+      if (window.innerWidth < 900) return;
+      isDragging = true;
+      startX = e.clientX;
+      startWidth = sidebar.offsetWidth;
+      sidebar.classList.add('resizing');
+      sidebar.classList.remove('smooth-resize');
+      handle.classList.add('dragging');
+      document.body.style.cursor = 'col-resize';
+      document.body.style.userSelect = 'none';
+      e.preventDefault();
+    });
+
+    document.addEventListener('mousemove', function(e) {
+      if (!isDragging) return;
+      const dx = e.clientX - startX;
+      let newWidth = startWidth + dx;
+      const minW = 220;
+      const maxW = Math.min(650, window.innerWidth * 0.5);
+      newWidth = Math.max(minW, Math.min(maxW, newWidth));
+      sidebar.style.width = newWidth + 'px';
+      localStorage.setItem('md-reader-sidebar-width', newWidth);
+      isExpanded = newWidth >= 420;
+      if (expandBtn) {
+        expandBtn.innerHTML = isExpanded ? shrinkIcon : expandIcon;
+        expandBtn.title = isExpanded ? 'Shrink Folder Panel' : 'Expand Folder Panel';
+      }
+    });
+
+    document.addEventListener('mouseup', function() {
+      if (!isDragging) return;
+      isDragging = false;
+      sidebar.classList.remove('resizing');
+      handle.classList.remove('dragging');
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    });
+  }
+
+  if (expandBtn && sidebar) {
+    expandBtn.addEventListener('click', function() {
+      if (window.innerWidth < 900) return;
+      sidebar.classList.add('smooth-resize');
+      if (isExpanded) {
+        // Collapse to default 280px
+        sidebar.style.width = DEFAULT_WIDTH + 'px';
+        localStorage.setItem('md-reader-sidebar-width', DEFAULT_WIDTH);
+        sidebar.classList.remove('expanded');
+        expandBtn.innerHTML = expandIcon;
+        expandBtn.title = 'Expand Folder Panel';
+        isExpanded = false;
+      } else {
+        // Expand to 480px
+        sidebar.style.width = EXPANDED_WIDTH + 'px';
+        localStorage.setItem('md-reader-sidebar-width', EXPANDED_WIDTH);
+        sidebar.classList.add('expanded');
+        expandBtn.innerHTML = shrinkIcon;
+        expandBtn.title = 'Shrink Folder Panel';
+        isExpanded = true;
+      }
+      setTimeout(function() { sidebar.classList.remove('smooth-resize'); }, 350);
+    });
+  }
 })();
 
 async function callAi(endpoint, body, onSuccess) {

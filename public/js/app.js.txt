@@ -66,6 +66,7 @@ const el = {
   aiPanelClose: document.getElementById("aiPanelClose"),
   aiPanelResizeHandle: document.getElementById("aiPanelResizeHandle"),
   aiPanelExpandBtn: document.getElementById("aiPanelExpandBtn"),
+  retryAiBtn: document.getElementById("retryAiBtn"),
   zenModeBtn: document.getElementById("zenModeBtn"),
   sidebarExpandBtn: document.getElementById("sidebarExpandBtn"),
   sidebarResizeHandle: document.getElementById("sidebarResizeHandle"),
@@ -1621,6 +1622,7 @@ function openAiPanel(title, showChatInput = false, panelType = null) {
   el.aiPanelTitle.textContent = title;
   show(el.aiPanel, 'flex');
   show(el.exportAiBtn, 'inline-block');
+  show(el.retryAiBtn, 'inline-block');
   el.aiPanelContent.innerHTML = "";
   if (showChatInput) {
     show(el.chatInputArea, 'flex');
@@ -1648,6 +1650,7 @@ function closeAiPanel() {
   hide(el.chatInputArea);
   hide(el.clearChatBtn);
   hide(el.exportAiBtn);
+  hide(el.retryAiBtn);
 
   const key = state.isGeneralChatActive ? "$general" : state.activeKey;
   if (key && state.aiCache[key]) {
@@ -1943,13 +1946,22 @@ el.summarizeBtn.addEventListener("click", () => {
 function renderChat() {
   let html = `<div class="chat-history">`;
   
-  state.chatHistory.forEach((msg) => {
+  state.chatHistory.forEach((msg, idx) => {
     const text = msg.parts[0].text;
     const isUser = msg.role === "user";
+    const retryBtnHtml = isUser ? '' : `
+      <button class="chat-retry-btn" title="Regenerate this Tutor response" onclick="retryChatResponse(${idx})">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
+        <span>Retry</span>
+      </button>
+    `;
     html += `
       <div class="chat-msg ${isUser ? 'user' : 'model'}">
         <div class="chat-bubble">${isUser ? text : marked.parse(text)}</div>
-        <div class="chat-meta">${isUser ? 'You' : 'Tutor'}</div>
+        <div class="chat-meta">
+          <span>${isUser ? 'You' : 'Tutor'}</span>
+          ${retryBtnHtml}
+        </div>
       </div>
     `;
   });
@@ -1999,6 +2011,108 @@ function renderChat() {
       }
     }, 100);
   }
+}
+
+async function retryChatResponse(msgIndex) {
+  const isGeneral = state.isGeneralChatActive;
+  const key = isGeneral ? "$general" : state.activeKey;
+  if (!state.aiCache[key]) return;
+
+  const cache = state.aiCache[key];
+  state.chatHistory = cache.chatHistory || [];
+  
+  if (typeof msgIndex === 'number' && msgIndex >= 0 && msgIndex < state.chatHistory.length) {
+    state.chatHistory = state.chatHistory.slice(0, msgIndex);
+  } else {
+    if (state.chatHistory.length > 0 && state.chatHistory[state.chatHistory.length - 1].role === "model") {
+      state.chatHistory.pop();
+    }
+  }
+
+  const lastUserMsg = [...state.chatHistory].reverse().find(m => m.role === "user");
+  if (!lastUserMsg) return;
+
+  cache.chatHistory = state.chatHistory;
+  saveAiCache();
+  renderChat();
+
+  show(el.aiSpinner, 'flex');
+  el.aiPanelBody.scrollTop = el.aiPanelBody.scrollHeight;
+
+  try {
+    const res = await fetch("/api/ai/chat", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ key: isGeneral ? null : state.activeKey, messages: state.chatHistory })
+    });
+    const data = await res.json();
+    hide(el.aiSpinner);
+
+    if (data.error) {
+      el.aiPanelContent.innerHTML += `<div style="padding:16px;background:rgba(248,81,73,0.08);border:1px solid var(--error);border-radius:var(--radius);color:var(--error);margin-top:12px">
+        <strong>Retry Error:</strong> ${data.error}
+      </div>`;
+      return;
+    }
+
+    state.chatHistory.push({
+      role: "model",
+      parts: [{ text: data.reply || "No reply received." }],
+      extra: {
+        keyConcepts: data.keyConcepts || [],
+        suggestedQuestions: data.suggestedQuestions || []
+      }
+    });
+    saveAiCache();
+    renderChat();
+  } catch (e) {
+    hide(el.aiSpinner);
+    el.aiPanelContent.innerHTML += `<div style="padding:16px;background:rgba(248,81,73,0.08);border:1px solid var(--error);border-radius:var(--radius);color:var(--error);margin-top:12px">
+      <strong>Network error:</strong> ${e.message}
+    </div>`;
+  }
+}
+window.retryChatResponse = retryChatResponse;
+
+if (el.retryAiBtn) {
+  el.retryAiBtn.addEventListener("click", () => {
+    const title = el.aiPanelTitle.textContent || "";
+    const key = state.isGeneralChatActive ? "$general" : state.activeKey;
+    
+    if (title.includes("Summary") || title.includes("Summarize")) {
+      if (key && state.aiCache[key]) {
+        delete state.aiCache[key].summaryHtml;
+        saveAiCache();
+      }
+      fetchAndApplySummary();
+    } else if (title.includes("Quiz")) {
+      if (key && state.aiCache[key]) {
+        delete state.aiCache[key].quizData;
+        saveAiCache();
+      }
+      fetchAndApplyQuiz();
+    } else if (title.includes("Flashcards")) {
+      if (key && state.aiCache[key]) {
+        delete state.aiCache[key].flashcards;
+        saveAiCache();
+      }
+      fetchAndApplyFlashcards();
+    } else if (title.includes("Cheat Sheet")) {
+      if (key && state.aiCache[key]) {
+        delete state.aiCache[key].cheatSheet;
+        saveAiCache();
+      }
+      fetchAndApplyCheatSheet();
+    } else if (title.includes("Glossary")) {
+      if (key && state.aiCache[key]) {
+        delete state.aiCache[key].glossary;
+        saveAiCache();
+      }
+      autoGlossary.fetchAndApply();
+    } else {
+      retryChatResponse();
+    }
+  });
 }
 
 async function sendChatPrompt(prompt) {

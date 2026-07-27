@@ -46,7 +46,7 @@
 - **🎯 Focus / Zen Mode & Typewriter Scrolling**: Full-screen, distraction-free reading environment that hides UI chrome and toolbars. Features active-paragraph focus with smooth scrolling and dimming of non-active text.
 - **🎨 8 Eye-Care Themes, 5 Accent Pickers & Dynamic Typography Engine**: Personalize your study environment with 8 base themes (Night, Day, Sepia, OLED Black, Forest Sage, Cafe Latte, Nord Frost, Sakura Rose) + 5 Accent Swatches (Indigo, Emerald, Sky, Rose, Amber) + 5 Font Families (Inter, Roboto, Merriweather Serif, Lexend Accessible, OpenDyslexic) + 4 Line Spacing Presets (1.4x to 2.0x).
 - **📁 Expandable & Resizable Folder Display Sidebar Panel**: Drag-to-resize handle (220px to 650px width) on the sidebar edge with 1-click **Expand/Shrink (↔)** toggle button and `localStorage` state persistence for effortless reading of long nested folder paths.
-- **📐 Resizable & Expandable AI Side Panel**: Drag-to-resize handle (300px to 85vw) with 1-click expand/collapse toggle for comfortable side-by-side study workflows.
+- **📐 Resizable & Expandable AI Side Panel with 1-Click Retry / Regenerate**: Drag-to-resize handle (300px to 85vw) with 1-click expand/collapse toggle and instant **🔄 Retry / Regenerate** buttons on every Tutor response and AI panel feature (Summary, Quiz, Flashcards, Cheat Sheet, Glossary).
 - **📐 Split-Screen Dual Reader**: Compare two Markdown notes side-by-side on desktop/tablets, with adaptive vertical stacking on mobile viewports.
 - **Dynamic Accent Color Picker**: Select custom HSL color accents (Indigo, Emerald, Sky, Rose, Amber) with fixed mobile-ready popovers.
 - **Adjustable Typography**: Font size scaling controls (A+ / A-) for comfortable reading on any screen size.

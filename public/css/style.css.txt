@@ -2612,6 +2612,29 @@ body.zen-mode .layout {
   overflow: hidden;
 }
 
+/* ---------- Full Screen Content Reading Mode ---------- */
+:fullscreen .reader,
+:-webkit-full-screen .reader,
+:-moz-full-screen .reader {
+  padding: 40px 32px 100px;
+  max-width: 960px;
+  margin: 0 auto;
+  overflow-y: auto;
+}
+
+body.is-fullscreen .reader {
+  max-width: 960px;
+  margin: 0 auto;
+  padding-left: 40px;
+  padding-right: 40px;
+}
+
+#fullScreenBtn.active {
+  background: var(--accent-bg);
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
 body.zen-mode .reader {
   padding: 60px 24px 140px;
   max-width: 820px;

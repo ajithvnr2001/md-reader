@@ -68,6 +68,7 @@ const el = {
   aiPanelExpandBtn: document.getElementById("aiPanelExpandBtn"),
   retryAiBtn: document.getElementById("retryAiBtn"),
   zenModeBtn: document.getElementById("zenModeBtn"),
+  fullScreenBtn: document.getElementById("fullScreenBtn"),
   sidebarExpandBtn: document.getElementById("sidebarExpandBtn"),
   sidebarResizeHandle: document.getElementById("sidebarResizeHandle"),
   
@@ -5216,5 +5217,64 @@ if ('serviceWorker' in navigator) {
       scrollTimeout = requestAnimationFrame(updateActiveParagraph);
     });
   }
+})();
+
+/* ---------- ⛶ Full Screen Reading Mode ---------- */
+(function initFullScreenMode() {
+  const btn = el.fullScreenBtn;
+  if (!btn) return;
+
+  const expandIcon = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>`;
+  const shrinkIcon = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3v3a2 2 0 0 1-2 2H3m18 0h-3a2 2 0 0 1-2-2V3m0 18v-3a2 2 0 0 1 2-2h3M3 16h3a2 2 0 0 1 2 2v3"/></svg>`;
+
+  function isFullScreen() {
+    return !!(document.fullscreenElement || document.webkitFullscreenElement || document.mozFullScreenElement || document.msFullscreenElement);
+  }
+
+  function toggleFullScreen() {
+    if (!isFullScreen()) {
+      const docEl = document.documentElement;
+      if (docEl.requestFullscreen) {
+        docEl.requestFullscreen();
+      } else if (docEl.webkitRequestFullscreen) {
+        docEl.webkitRequestFullscreen();
+      } else if (docEl.mozRequestFullScreen) {
+        docEl.mozRequestFullScreen();
+      } else if (docEl.msRequestFullscreen) {
+        docEl.msRequestFullscreen();
+      }
+    } else {
+      if (document.exitFullscreen) {
+        document.exitFullscreen();
+      } else if (document.webkitExitFullscreen) {
+        document.webkitExitFullscreen();
+      } else if (document.mozCancelFullScreen) {
+        document.mozCancelFullScreen();
+      } else if (document.msExitFullscreen) {
+        document.msExitFullscreen();
+      }
+    }
+  }
+
+  function updateFullScreenUI() {
+    const full = isFullScreen();
+    if (full) {
+      document.body.classList.add("is-fullscreen");
+      btn.classList.add("active");
+      btn.innerHTML = shrinkIcon;
+      btn.title = "Exit Full Screen Mode (ESC)";
+    } else {
+      document.body.classList.remove("is-fullscreen");
+      btn.classList.remove("active");
+      btn.innerHTML = expandIcon;
+      btn.title = "Toggle Full Screen Mode";
+    }
+  }
+
+  btn.addEventListener("click", toggleFullScreen);
+
+  ["fullscreenchange", "webkitfullscreenchange", "mozfullscreenchange", "MSFullscreenChange"].forEach(evt => {
+    document.addEventListener(evt, updateFullScreenUI);
+  });
 })();
 

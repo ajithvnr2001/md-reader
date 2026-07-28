@@ -737,6 +737,18 @@
       <span style="font-size:0.7rem; opacity:0.7; background:rgba(255,255,255,0.15); padding:2px 6px; border-radius:4px">ESC</span>
     </button>
 
+    <!-- Floating Full Screen Control Bar (Zoom & Exit) -->
+    <div id="fullScreenControls" class="fullscreen-controls" style="display:none">
+      <button id="fsZoomOutBtn" class="icon-btn" title="Zoom Out (A-)" style="padding:4px"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"/></svg></button>
+      <span id="fsZoomLevelText" style="font-size:0.78rem; font-weight:700; min-width:38px; text-align:center; user-select:none; color:var(--text)">100%</span>
+      <button id="fsZoomInBtn" class="icon-btn" title="Zoom In (A+)" style="padding:4px"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></button>
+      <div style="width:1px; height:16px; background:var(--border); margin:0 4px"></div>
+      <button id="fsExitBtn" class="icon-btn" title="Exit Full Screen (ESC)" style="padding:4px 10px; gap:4px; font-size:0.78rem; font-weight:600">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        <span>Exit</span>
+      </button>
+    </div>
+
     <div id="sidebarOverlay" class="sidebar-overlay" style="display:none"></div>
   </div>
 

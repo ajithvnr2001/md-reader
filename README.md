@@ -43,7 +43,7 @@
 ---
 
 ### 🎨 Customization, Layout & Accessibility
-- **⛶ 1-Click Full Screen Content Reading Mode**: Toggle borderless full-screen reading via the topbar button (`#fullScreenBtn`) or keyboard shortcut (`F11` / `Ctrl+Shift+F`) leveraging the HTML5 `requestFullscreen()` API.
+- **⛶ 1-Click Distraction-Free Full Screen Content Reading Mode**: Toggle borderless full-screen reading via topbar button (`#fullScreenBtn`) or keyboard shortcut (`F11` / `Ctrl+Shift+F`). Automatically hides all UI chrome, topbar, sidebar, and toolbars, leaving ONLY smooth document scrolling and a floating **Zoom In / Zoom Out (+/-)** control bar.
 - **🎯 Focus / Zen Mode & Typewriter Scrolling**: Full-screen, distraction-free reading environment that hides UI chrome and toolbars. Features active-paragraph focus with smooth scrolling and dimming of non-active text.
 - **🎨 8 Eye-Care Themes, 5 Accent Pickers & Dynamic Typography Engine**: Personalize your study environment with 8 base themes (Night, Day, Sepia, OLED Black, Forest Sage, Cafe Latte, Nord Frost, Sakura Rose) + 5 Accent Swatches (Indigo, Emerald, Sky, Rose, Amber) + 5 Font Families (Inter, Roboto, Merriweather Serif, Lexend Accessible, OpenDyslexic) + 4 Line Spacing Presets (1.4x to 2.0x).
 - **📁 Expandable & Resizable Folder Display Sidebar Panel**: Drag-to-resize handle (220px to 650px width) on the sidebar edge with 1-click **Expand/Shrink (↔)** toggle button and `localStorage` state persistence for effortless reading of long nested folder paths.

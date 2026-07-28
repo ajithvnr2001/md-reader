@@ -2613,25 +2613,59 @@ body.zen-mode .layout {
 }
 
 /* ---------- Full Screen Content Reading Mode ---------- */
-:fullscreen .reader,
-:-webkit-full-screen .reader,
-:-moz-full-screen .reader {
-  padding: 40px 32px 100px;
-  max-width: 960px;
-  margin: 0 auto;
-  overflow-y: auto;
+body.is-fullscreen .topbar,
+body.is-fullscreen .sidebar,
+body.is-fullscreen .ai-toolbar,
+body.is-fullscreen .toc-panel,
+body.is-fullscreen #marginNotesPanel,
+body.is-fullscreen #aiPanel,
+body.is-fullscreen #readingStatsBar,
+body.is-fullscreen #focusModeBar,
+body.is-fullscreen #pomodoroWidget {
+  display: none !important;
+}
+
+body.is-fullscreen .layout {
+  height: 100vh;
+  width: 100vw;
+  overflow: hidden;
 }
 
 body.is-fullscreen .reader {
-  max-width: 960px;
+  height: 100vh;
+  max-width: 900px;
   margin: 0 auto;
-  padding-left: 40px;
-  padding-right: 40px;
+  padding: 60px 24px 140px;
+  overflow-y: auto !important;
+  scroll-behavior: smooth;
 }
 
 #fullScreenBtn.active {
   background: var(--accent-bg);
   color: var(--accent);
+  border-color: var(--accent);
+}
+
+/* Floating Fullscreen Controls Bar (Zoom & Exit) */
+.fullscreen-controls {
+  position: fixed;
+  bottom: 28px;
+  right: 28px;
+  z-index: 999999;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  background: var(--bg-elevated);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(12px);
+  transition: all 0.25s ease;
+}
+
+.fullscreen-controls:hover {
   border-color: var(--accent);
 }
 

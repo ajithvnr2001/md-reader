@@ -69,6 +69,11 @@ const el = {
   retryAiBtn: document.getElementById("retryAiBtn"),
   zenModeBtn: document.getElementById("zenModeBtn"),
   fullScreenBtn: document.getElementById("fullScreenBtn"),
+  fullScreenControls: document.getElementById("fullScreenControls"),
+  fsZoomInBtn: document.getElementById("fsZoomInBtn"),
+  fsZoomOutBtn: document.getElementById("fsZoomOutBtn"),
+  fsZoomLevelText: document.getElementById("fsZoomLevelText"),
+  fsExitBtn: document.getElementById("fsExitBtn"),
   sidebarExpandBtn: document.getElementById("sidebarExpandBtn"),
   sidebarResizeHandle: document.getElementById("sidebarResizeHandle"),
   
@@ -5222,6 +5227,11 @@ if ('serviceWorker' in navigator) {
 /* ---------- ⛶ Full Screen Reading Mode ---------- */
 (function initFullScreenMode() {
   const btn = el.fullScreenBtn;
+  const controls = el.fullScreenControls;
+  const zoomInBtn = el.fsZoomInBtn;
+  const zoomOutBtn = el.fsZoomOutBtn;
+  const zoomText = el.fsZoomLevelText;
+  const exitBtn = el.fsExitBtn;
   if (!btn) return;
 
   const expandIcon = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>`;
@@ -5244,15 +5254,25 @@ if ('serviceWorker' in navigator) {
         docEl.msRequestFullscreen();
       }
     } else {
-      if (document.exitFullscreen) {
-        document.exitFullscreen();
-      } else if (document.webkitExitFullscreen) {
-        document.webkitExitFullscreen();
-      } else if (document.mozCancelFullScreen) {
-        document.mozCancelFullScreen();
-      } else if (document.msExitFullscreen) {
-        document.msExitFullscreen();
-      }
+      exitFullScreen();
+    }
+  }
+
+  function exitFullScreen() {
+    if (document.exitFullscreen) {
+      document.exitFullscreen();
+    } else if (document.webkitExitFullscreen) {
+      document.webkitExitFullscreen();
+    } else if (document.mozCancelFullScreen) {
+      document.mozCancelFullScreen();
+    } else if (document.msExitFullscreen) {
+      document.msExitFullscreen();
+    }
+  }
+
+  function updateZoomText() {
+    if (zoomText) {
+      zoomText.textContent = `${Math.round((state.fontScale || 1.0) * 100)}%`;
     }
   }
 
@@ -5263,15 +5283,38 @@ if ('serviceWorker' in navigator) {
       btn.classList.add("active");
       btn.innerHTML = shrinkIcon;
       btn.title = "Exit Full Screen Mode (ESC)";
+      if (controls) show(controls, 'flex');
+      updateZoomText();
     } else {
       document.body.classList.remove("is-fullscreen");
       btn.classList.remove("active");
       btn.innerHTML = expandIcon;
       btn.title = "Toggle Full Screen Mode";
+      if (controls) hide(controls);
     }
   }
 
   btn.addEventListener("click", toggleFullScreen);
+
+  if (zoomInBtn) {
+    zoomInBtn.addEventListener("click", () => {
+      state.fontScale = Math.min(2.0, +(state.fontScale + 0.1).toFixed(2));
+      applyFontScale();
+      updateZoomText();
+    });
+  }
+
+  if (zoomOutBtn) {
+    zoomOutBtn.addEventListener("click", () => {
+      state.fontScale = Math.max(0.7, +(state.fontScale - 0.1).toFixed(2));
+      applyFontScale();
+      updateZoomText();
+    });
+  }
+
+  if (exitBtn) {
+    exitBtn.addEventListener("click", exitFullScreen);
+  }
 
   ["fullscreenchange", "webkitfullscreenchange", "mozfullscreenchange", "MSFullscreenChange"].forEach(evt => {
     document.addEventListener(evt, updateFullScreenUI);

@@ -142,31 +142,114 @@ async function runGemini(env, messages, systemInstruction = "", responseMimeType
   throw new Error(`Unexpected Gemini response: ${JSON.stringify(data)}`);
 }
 
+// Convert a Gemini-style schema (OBJECT/STRING/ARRAY/INTEGER) into a concrete JSON example string
+// so Mercury knows the exact field names and structure to return.
+function schemaToExample(schema) {
+  if (!schema) return null;
+  const t = (schema.type || "").toUpperCase();
+  if (t === "STRING") return schema.description ? `"<${schema.description}>"` : '""';
+  if (t === "INTEGER" || t === "NUMBER") return 0;
+  if (t === "BOOLEAN") return false;
+  if (t === "ARRAY") {
+    if (schema.items) {
+      const itemEx = schemaToExample(schema.items);
+      return [itemEx];
+    }
+    return [];
+  }
+  if (t === "OBJECT") {
+    const obj = {};
+    if (schema.properties) {
+      for (const [key, val] of Object.entries(schema.properties)) {
+        obj[key] = schemaToExample(val);
+      }
+    }
+    return obj;
+  }
+  return "";
+}
+
+// Normalize Mercury response field names to match what frontend expects.
+// Mercury sometimes uses "response", "answer", "content", "text" instead of "reply".
+function normalizeAiResponse(parsed) {
+  if (!parsed || typeof parsed !== "object") return parsed;
+
+  // Chat: reply
+  if (!parsed.reply && (parsed.response || parsed.answer || parsed.content || parsed.text || parsed.explanation || parsed.message)) {
+    parsed.reply = parsed.response || parsed.answer || parsed.content || parsed.text || parsed.explanation || parsed.message;
+  }
+
+  // Summarize: summary
+  if (!parsed.summary && (parsed.response || parsed.answer || parsed.content || parsed.text)) {
+    parsed.summary = parsed.response || parsed.answer || parsed.content || parsed.text;
+  }
+
+  // Quiz: quiz array
+  if (!parsed.quiz && parsed.questions && Array.isArray(parsed.questions)) {
+    parsed.quiz = parsed.questions;
+  }
+
+  // Flashcards: flashcards array
+  if (!parsed.flashcards && parsed.cards && Array.isArray(parsed.cards)) {
+    parsed.flashcards = parsed.cards;
+  }
+
+  // Glossary: terms array
+  if (!parsed.terms && parsed.glossary && Array.isArray(parsed.glossary)) {
+    parsed.terms = parsed.glossary;
+  }
+
+  // Translation: fullTranslation
+  if (!parsed.fullTranslation && (parsed.translation || parsed.translated_text || parsed.translatedText)) {
+    parsed.fullTranslation = parsed.translation || parsed.translated_text || parsed.translatedText;
+  }
+
+  // Podcast: dialogue array
+  if (!parsed.dialogue && parsed.conversation && Array.isArray(parsed.conversation)) {
+    parsed.dialogue = parsed.conversation;
+  }
+
+  // Ensure arrays default to empty
+  if (!parsed.suggestedQuestions) parsed.suggestedQuestions = [];
+  if (!parsed.keyConcepts) parsed.keyConcepts = [];
+
+  return parsed;
+}
+
 function parseJsonResponse(rawText) {
   if (!rawText) {
     return { reply: "No response content generated.", summary: "No summary generated.", quiz: [], flashcards: [], terms: [], suggestedQuestions: [], keyConcepts: [] };
   }
   
-  if (typeof rawText === "object") return rawText;
+  if (typeof rawText === "object") return normalizeAiResponse(rawText);
 
   // Direct parse
   try {
-    return JSON.parse(rawText);
+    return normalizeAiResponse(JSON.parse(rawText));
   } catch (e) {}
 
   // Strip markdown code fences ```json ... ``` or ``` ... ```
   let cleaned = rawText.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
   try {
-    return JSON.parse(cleaned);
+    return normalizeAiResponse(JSON.parse(cleaned));
   } catch (e) {}
 
-  // Extract content between first { and last }
+  // Extract content between first { and last } (or [ and ] for arrays)
   const firstBrace = cleaned.indexOf("{");
   const lastBrace = cleaned.lastIndexOf("}");
   if (firstBrace !== -1 && lastBrace > firstBrace) {
     const jsonSubstring = cleaned.substring(firstBrace, lastBrace + 1);
     try {
-      return JSON.parse(jsonSubstring);
+      return normalizeAiResponse(JSON.parse(jsonSubstring));
+    } catch (e) {}
+  }
+  const firstBracket = cleaned.indexOf("[");
+  const lastBracket = cleaned.lastIndexOf("]");
+  if (firstBracket !== -1 && lastBracket > firstBracket) {
+    const jsonSubstring = cleaned.substring(firstBracket, lastBracket + 1);
+    try {
+      const arr = JSON.parse(jsonSubstring);
+      return normalizeAiResponse({ items: arr });
     } catch (e) {}
   }
 
@@ -191,8 +274,12 @@ async function runMercury(env, messages, systemInstruction = "", responseMimeTyp
   const formattedMessages = [];
   
   let fullSystemPrompt = systemInstruction || "";
-  if (responseMimeType === "application/json") {
-    fullSystemPrompt += "\n\nCRITICAL OUTPUT REQUIREMENT: Respond strictly with valid JSON only. Do not wrap in markdown or add extra text.";
+  if (responseMimeType === "application/json" && responseSchema) {
+    const example = schemaToExample(responseSchema);
+    const exampleStr = JSON.stringify(example, null, 2);
+    fullSystemPrompt += `\n\nYou MUST respond with valid JSON matching this EXACT structure (use these exact field names):\n${exampleStr}\n\nDo NOT use alternative field names. Do NOT wrap in markdown code fences. Output raw JSON only.`;
+  } else if (responseMimeType === "application/json") {
+    fullSystemPrompt += "\n\nRespond strictly with valid JSON only. Do not wrap in markdown or add extra text.";
   }
 
   if (fullSystemPrompt.trim()) {
@@ -238,9 +325,6 @@ async function runMercury(env, messages, systemInstruction = "", responseMimeTyp
   const data = await res.json();
   if (data.choices && data.choices[0] && data.choices[0].message) {
     let rawText = data.choices[0].message.content || "";
-    if (responseMimeType === "application/json") {
-      rawText = rawText.replace(/^```json\s*/i, "").replace(/^```\s*/i, "").replace(/\s*```$/i, "").trim();
-    }
     return rawText;
   }
 

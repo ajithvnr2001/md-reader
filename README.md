@@ -29,6 +29,10 @@
 - **💬 Paragraph Discussion Threads with `@AI`**: Leave comments on any highlighted section and tag `@AI` to discuss, explain, or debate points directly in the margin thread.
 - **🔍 Semantic Workspace Search & Synthesis**: Search across all files in your library or synthesize comparative study guides from multiple selected documents.
 
+### 🧠 Multi-Model AI Engine & Study Cards
+- **🚀 Dual AI Engine (Gemini 3.5 Flash Lite ↔ Mercury 2 by Inception Labs)**: Seamlessly toggle between **Gemini 3.5 Flash Lite** and **Mercury 2 (Inception API)** vice versa at any time via topbar or AI panel dropdowns. Switch models mid-chat with individual model badges (`Gemini 3.5` / `Mercury 2`) tagged on each response turn.
+- **📚 Multi-Document Comparative Synthesis**: Select multiple files in the sidebar and trigger cross-document comparative analysis and concept mapping powered by your chosen AI model.
+
 ---
 
 ### 🎮 Gamification & Active Reading Tools

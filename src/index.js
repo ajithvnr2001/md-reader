@@ -142,6 +142,74 @@ async function runGemini(env, messages, systemInstruction = "", responseMimeType
   throw new Error(`Unexpected Gemini response: ${JSON.stringify(data)}`);
 }
 
+async function runMercury(env, messages, systemInstruction = "", responseMimeType = "text/plain", responseSchema = null) {
+  const apiKey = env.INCEPTION_API_KEY || "***REMOVED-INCEPTION-KEY***";
+  const url = "https://api.inceptionlabs.ai/v1/chat/completions";
+
+  const formattedMessages = [];
+  
+  let fullSystemPrompt = systemInstruction || "";
+  if (responseMimeType === "application/json") {
+    fullSystemPrompt += "\n\nCRITICAL OUTPUT REQUIREMENT: You MUST respond ONLY with valid, strictly raw JSON matching the requested schema. Do NOT include markdown codeblocks or extra text outside JSON.";
+  }
+
+  if (fullSystemPrompt.trim()) {
+    formattedMessages.push({ role: "system", content: fullSystemPrompt });
+  }
+
+  messages.forEach(m => {
+    let text = "";
+    if (m.parts && m.parts[0]) {
+      text = m.parts[0].text;
+    } else if (typeof m.content === "string") {
+      text = m.content;
+    } else if (typeof m.text === "string") {
+      text = m.text;
+    }
+
+    const role = (m.role === "assistant" || m.role === "model") ? "assistant" : "user";
+    formattedMessages.push({ role, content: text });
+  });
+
+  const body = {
+    model: "mercury-2",
+    messages: formattedMessages,
+    reasoning_effort: "instant"
+  };
+
+  const res = await fetch(url, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "authorization": `Bearer ${apiKey}`
+    },
+    body: JSON.stringify(body)
+  });
+
+  if (!res.ok) {
+    const errText = await res.text();
+    throw new Error(`Inception API (Mercury 2) error ${res.status}: ${errText}`);
+  }
+
+  const data = await res.json();
+  if (data.choices && data.choices[0] && data.choices[0].message) {
+    let rawText = data.choices[0].message.content || "";
+    if (responseMimeType === "application/json") {
+      rawText = rawText.replace(/^```json\s*/i, "").replace(/^```\s*/i, "").replace(/\s*```$/i, "").trim();
+    }
+    return rawText;
+  }
+
+  throw new Error(`Unexpected Inception API response: ${JSON.stringify(data)}`);
+}
+
+async function runAI(env, { model = "gemini-3.5-flash-lite", messages, systemInstruction = "", responseMimeType = "text/plain", responseSchema = null }) {
+  if (model && (model.includes("mercury") || model.includes("inception"))) {
+    return await runMercury(env, messages, systemInstruction, responseMimeType, responseSchema);
+  }
+  return await runGemini(env, messages, systemInstruction, responseMimeType, responseSchema);
+}
+
 const summarizeSchema = {
   type: "OBJECT",
   properties: {
@@ -521,28 +589,28 @@ export default {
       }
     }
 
-    // ---- API: Gemini — summarize ----
+    // ---- API: AI — summarize ----
     if (pathname === "/api/ai/summarize" && request.method === "POST") {
       try {
-        const { key } = await request.json();
+        const { key, model } = await request.json();
         const text = await getMarkdownText(env, key);
         if (text === null) return json({ error: "File not found" }, 404);
         
         const systemInstruction = "You are a helpful study assistant. Summarize the given document in clean bullet points.";
         const messages = [{ role: "user", content: `Please summarize this document:\n\n${text}` }];
         
-        const responseText = await runGemini(env, messages, systemInstruction, "application/json", summarizeSchema);
+        const responseText = await runAI(env, { model, messages, systemInstruction, responseMimeType: "application/json", responseSchema: summarizeSchema });
         return json(JSON.parse(responseText));
       } catch (err) {
         console.error("Summarize error:", err);
-        return json({ error: err.message || "Gemini summarize failed" }, 500);
+        return json({ error: err.message || "AI summarize failed" }, 500);
       }
     }
 
-    // ---- API: Gemini — explain selection ----
+    // ---- API: AI — explain selection ----
     if (pathname === "/api/ai/explain" && request.method === "POST") {
       try {
-        const { key, selection } = await request.json();
+        const { key, selection, model } = await request.json();
         const text = await getMarkdownText(env, key);
         if (text === null) return json({ error: "File not found" }, 404);
         
@@ -553,36 +621,36 @@ ${text}`;
           : `Explain the key concepts of this document in simple terms.`;
           
         const messages = [{ role: "user", content: prompt }];
-        const responseText = await runGemini(env, messages, systemInstruction, "application/json", chatSchema);
+        const responseText = await runAI(env, { model, messages, systemInstruction, responseMimeType: "application/json", responseSchema: chatSchema });
         return json(JSON.parse(responseText));
       } catch (err) {
         console.error("Explain error:", err);
-        return json({ error: err.message || "Gemini explain failed" }, 500);
+        return json({ error: err.message || "AI explain failed" }, 500);
       }
     }
 
-    // ---- API: Gemini — quiz ----
+    // ---- API: AI — quiz ----
     if (pathname === "/api/ai/quiz" && request.method === "POST") {
       try {
-        const { key } = await request.json();
+        const { key, model } = await request.json();
         const text = await getMarkdownText(env, key);
         if (text === null) return json({ error: "File not found" }, 404);
         
         const systemInstruction = "You generate short study quizzes based on the document. Generate exactly 5 multiple-choice questions.";
         const messages = [{ role: "user", content: `Please generate a quiz for this document:\n\n${text}` }];
         
-        const responseText = await runGemini(env, messages, systemInstruction, "application/json", quizSchema);
+        const responseText = await runAI(env, { model, messages, systemInstruction, responseMimeType: "application/json", responseSchema: quizSchema });
         return json(JSON.parse(responseText));
       } catch (err) {
         console.error("Quiz error:", err);
-        return json({ error: err.message || "Gemini quiz failed" }, 500);
+        return json({ error: err.message || "AI quiz failed" }, 500);
       }
     }
 
-    // ---- API: Gemini — chat ----
+    // ---- API: AI — chat ----
     if (pathname === "/api/ai/chat" && request.method === "POST") {
       try {
-        const { key, messages } = await request.json();
+        const { key, messages, model } = await request.json();
         let systemInstruction = "";
         
         if (key) {
@@ -605,54 +673,54 @@ When explaining systems, architectures, comparisons, or sequences, construct a c
 Always return your response structured according to the requested JSON schema.`;
         }
 
-        const responseText = await runGemini(env, messages, systemInstruction, "application/json", chatSchema);
+        const responseText = await runAI(env, { model, messages, systemInstruction, responseMimeType: "application/json", responseSchema: chatSchema });
         return json(JSON.parse(responseText));
       } catch (err) {
         console.error("Chat error:", err);
-        return json({ error: err.message || "Gemini chat failed" }, 500);
+        return json({ error: err.message || "AI chat failed" }, 500);
       }
     }
 
-    // ---- API: Gemini — flashcards ----
+    // ---- API: AI — flashcards ----
     if (pathname === "/api/ai/flashcards" && request.method === "POST") {
       try {
-        const { key } = await request.json();
+        const { key, model } = await request.json();
         const text = await getMarkdownText(env, key);
         if (text === null) return json({ error: "File not found" }, 404);
         
         const systemInstruction = "You generate high-quality study flashcards based on the document context. Generate exactly 5 to 8 cards containing a term or question on the front, and a clear, short definition or answer on the back.";
         const messages = [{ role: "user", content: `Please generate flashcards for this document:\n\n${text}` }];
         
-        const responseText = await runGemini(env, messages, systemInstruction, "application/json", flashcardsSchema);
+        const responseText = await runAI(env, { model, messages, systemInstruction, responseMimeType: "application/json", responseSchema: flashcardsSchema });
         return json(JSON.parse(responseText));
       } catch (err) {
         console.error("Flashcards error:", err);
-        return json({ error: err.message || "Gemini flashcards failed" }, 500);
+        return json({ error: err.message || "AI flashcards failed" }, 500);
       }
     }
 
-    // ---- API: Gemini — cheatsheet ----
+    // ---- API: AI — cheatsheet ----
     if (pathname === "/api/ai/cheatsheet" && request.method === "POST") {
       try {
-        const { key } = await request.json();
+        const { key, model } = await request.json();
         const text = await getMarkdownText(env, key);
         if (text === null) return json({ error: "File not found" }, 404);
         
         const systemInstruction = "You extract and compress all key definitions, code syntax, formulas, commands, and core rules into a highly dense, 1-page print-ready exam cheat sheet.";
         const messages = [{ role: "user", content: `Please create a 1-page exam cheat sheet for this document:\n\n${text}` }];
         
-        const responseText = await runGemini(env, messages, systemInstruction, "application/json", cheatsheetSchema);
+        const responseText = await runAI(env, { model, messages, systemInstruction, responseMimeType: "application/json", responseSchema: cheatsheetSchema });
         return json(JSON.parse(responseText));
       } catch (err) {
         console.error("Cheatsheet error:", err);
-        return json({ error: err.message || "Gemini cheatsheet failed" }, 500);
+        return json({ error: err.message || "AI cheatsheet failed" }, 500);
       }
     }
 
-    // ---- API: Gemini — paragraph comment thread ----
+    // ---- API: AI — paragraph comment thread ----
     if (pathname === "/api/ai/comment" && request.method === "POST") {
       try {
-        const { key, paragraphText, commentText, threadHistory } = await request.json();
+        const { key, paragraphText, commentText, threadHistory, model } = await request.json();
         let docContext = "";
         if (key) {
           const text = await getMarkdownText(env, key);
@@ -668,36 +736,36 @@ ${docContext}Target Paragraph:
           ? threadHistory
           : [{ role: "user", content: commentText || "Please explain this paragraph." }];
 
-        const responseText = await runGemini(env, messages, systemInstruction, "application/json", chatSchema);
+        const responseText = await runAI(env, { model, messages, systemInstruction, responseMimeType: "application/json", responseSchema: chatSchema });
         return json(JSON.parse(responseText));
       } catch (err) {
         console.error("Comment error:", err);
-        return json({ error: err.message || "Gemini comment failed" }, 500);
+        return json({ error: err.message || "AI comment failed" }, 500);
       }
     }
 
-    // ---- API: Gemini — auto glossary ----
+    // ---- API: AI — auto glossary ----
     if (pathname === "/api/ai/glossary" && request.method === "POST") {
       try {
-        const { key } = await request.json();
+        const { key, model } = await request.json();
         const text = await getMarkdownText(env, key);
         if (text === null) return json({ error: "File not found" }, 404);
 
         const systemInstruction = "You detect and extract 8 to 15 key technical terms, acronyms, and specialized jargon from the document. For each term, provide a clear 1-sentence definition.";
         const messages = [{ role: "user", content: `Please extract key glossary terms for this document:\n\n${text}` }];
 
-        const responseText = await runGemini(env, messages, systemInstruction, "application/json", glossarySchema);
+        const responseText = await runAI(env, { model, messages, systemInstruction, responseMimeType: "application/json", responseSchema: glossarySchema });
         return json(JSON.parse(responseText));
       } catch (err) {
         console.error("Glossary error:", err);
-        return json({ error: err.message || "Gemini glossary failed" }, 500);
+        return json({ error: err.message || "AI glossary failed" }, 500);
       }
     }
 
-    // ---- API: Gemini — context-aware full document translation ----
+    // ---- API: AI — context-aware full document translation ----
     if (pathname === "/api/ai/translate" && request.method === "POST") {
       try {
-        const { key, targetLanguage = "Tamil" } = await request.json();
+        const { key, targetLanguage = "Tamil", model } = await request.json();
         const text = await getMarkdownText(env, key);
         if (text === null) return json({ error: "File not found" }, 404);
 
@@ -712,11 +780,11 @@ CRITICAL TRANSLATION GUIDELINES FOR ${targetLanguage}:
 
         const messages = [{ role: "user", content: `Please translate the full document below into natural, easy-to-understand modern ${targetLanguage}:\n\n${truncateForModel(text, 12000)}` }];
 
-        const responseText = await runGemini(env, messages, systemInstruction, "application/json", translateSchema);
+        const responseText = await runAI(env, { model, messages, systemInstruction, responseMimeType: "application/json", responseSchema: translateSchema });
         return json(JSON.parse(responseText));
       } catch (err) {
         console.error("Translation error:", err);
-        return json({ error: err.message || "Gemini translation failed" }, 500);
+        return json({ error: err.message || "AI translation failed" }, 500);
       }
     }
 
@@ -740,7 +808,7 @@ CRITICAL TRANSLATION GUIDELINES FOR ${targetLanguage}:
     // ---- API: Gemini — 2-Host Audio Podcast Generator ----
     if (pathname === "/api/ai/podcast/generate" && request.method === "POST") {
       try {
-        const { key, language = "Tamil" } = await request.json();
+        const { key, language = "Tamil", model } = await request.json();
         const text = await getMarkdownText(env, key);
         if (text === null) return json({ error: "File not found" }, 404);
 
@@ -760,7 +828,7 @@ Generate 6 to 12 dialogue turns covering the document thoroughly.`;
 
         const messages = [{ role: "user", content: `Please create a 2-host audio podcast dialogue script in natural modern ${language} for the following complete document:\n\n${truncateForModel(text, 12000)}` }];
 
-        const responseText = await runGemini(env, messages, systemInstruction, "application/json", podcastSchema);
+        const responseText = await runAI(env, { model, messages, systemInstruction, responseMimeType: "application/json", responseSchema: podcastSchema });
         const podcastData = JSON.parse(responseText);
 
         // Attempt TTS audio generation & R2 storage

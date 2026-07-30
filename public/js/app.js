@@ -22,9 +22,9 @@ const state = {
   selectedKeys: new Set(),
   activeFont: localStorage.getItem("md-reader-font-family") || "inter",
   lineHeight: localStorage.getItem("md-reader-line-height") || "1.6",
-  isSplitMode: false,
   activePane: "primary",
   secondaryKey: null,
+  selectedModel: localStorage.getItem("md-reader-ai-model") || "gemini-3.5-flash-lite",
 };
 
 function saveAiCache() {
@@ -70,6 +70,8 @@ const el = {
   zenModeBtn: document.getElementById("zenModeBtn"),
   fullScreenBtn: document.getElementById("fullScreenBtn"),
   fullScreenControls: document.getElementById("fullScreenControls"),
+  topbarAiModelSelect: document.getElementById("topbarAiModelSelect"),
+  panelAiModelSelect: document.getElementById("panelAiModelSelect"),
   fsZoomInBtn: document.getElementById("fsZoomInBtn"),
   fsZoomOutBtn: document.getElementById("fsZoomOutBtn"),
   fsZoomLevelText: document.getElementById("fsZoomLevelText"),
@@ -1891,12 +1893,30 @@ el.aiPanelClose.addEventListener("click", closeAiPanel);
   }
 })();
 
+/* ---------------- AI Model Selector Sync ---------------- */
+function syncAiModelSelectors(model) {
+  state.selectedModel = model;
+  localStorage.setItem("md-reader-ai-model", model);
+  if (el.topbarAiModelSelect) el.topbarAiModelSelect.value = model;
+  if (el.panelAiModelSelect) el.panelAiModelSelect.value = model;
+}
+
+if (el.topbarAiModelSelect) {
+  el.topbarAiModelSelect.value = state.selectedModel;
+  el.topbarAiModelSelect.addEventListener("change", (e) => syncAiModelSelectors(e.target.value));
+}
+if (el.panelAiModelSelect) {
+  el.panelAiModelSelect.value = state.selectedModel;
+  el.panelAiModelSelect.addEventListener("change", (e) => syncAiModelSelectors(e.target.value));
+}
+
 async function callAi(endpoint, body, onSuccess) {
   try {
+    const payload = { model: state.selectedModel, ...body };
     const res = await fetch(endpoint, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify(body),
+      body: JSON.stringify(payload),
     });
     const data = await res.json();
     hide(el.aiSpinner);
@@ -1955,6 +1975,7 @@ function renderChat() {
   state.chatHistory.forEach((msg, idx) => {
     const text = msg.parts[0].text;
     const isUser = msg.role === "user";
+    const modelBadge = isUser ? '' : `<span class="chat-model-badge">${msg.modelName || (msg.model && msg.model.includes('mercury') ? 'Mercury 2' : 'Gemini 3.5')}</span>`;
     const retryBtnHtml = isUser ? '' : `
       <button class="chat-retry-btn" title="Regenerate this Tutor response" onclick="retryChatResponse(${idx})">
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
@@ -1966,6 +1987,7 @@ function renderChat() {
         <div class="chat-bubble">${isUser ? text : marked.parse(text)}</div>
         <div class="chat-meta">
           <span>${isUser ? 'You' : 'Tutor'}</span>
+          ${modelBadge}
           ${retryBtnHtml}
         </div>
       </div>
@@ -2049,7 +2071,7 @@ async function retryChatResponse(msgIndex) {
     const res = await fetch("/api/ai/chat", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ key: isGeneral ? null : state.activeKey, messages: state.chatHistory })
+      body: JSON.stringify({ key: isGeneral ? null : state.activeKey, messages: state.chatHistory, model: state.selectedModel })
     });
     const data = await res.json();
     hide(el.aiSpinner);
@@ -2064,6 +2086,8 @@ async function retryChatResponse(msgIndex) {
     state.chatHistory.push({
       role: "model",
       parts: [{ text: data.reply || "No reply received." }],
+      model: state.selectedModel,
+      modelName: state.selectedModel.includes("mercury") ? "Mercury 2" : "Gemini 3.5",
       extra: {
         keyConcepts: data.keyConcepts || [],
         suggestedQuestions: data.suggestedQuestions || []
@@ -2153,7 +2177,7 @@ async function sendChatPrompt(prompt) {
     const res = await fetch("/api/ai/chat", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ key: isGeneral ? null : state.activeKey, messages: state.chatHistory })
+      body: JSON.stringify({ key: isGeneral ? null : state.activeKey, messages: state.chatHistory, model: state.selectedModel })
     });
     const data = await res.json();
     hide(el.aiSpinner);
@@ -2165,10 +2189,12 @@ async function sendChatPrompt(prompt) {
       return;
     }
     
-    // Add model response with extra data
+    // Add model response with extra data & model badge
     state.chatHistory.push({
       role: "model",
       parts: [{ text: data.reply || "No reply received." }],
+      model: state.selectedModel,
+      modelName: state.selectedModel.includes("mercury") ? "Mercury 2" : "Gemini 3.5",
       extra: {
         keyConcepts: data.keyConcepts || [],
         suggestedQuestions: data.suggestedQuestions || []
@@ -3287,7 +3313,7 @@ if (el.cheatSheetBtn) {
       const res = await fetch("/api/ai/cheatsheet", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ key: state.activeKey })
+        body: JSON.stringify({ key: state.activeKey, model: state.selectedModel })
       });
       
       if (!res.ok) throw new Error(`Server returned ${res.status}`);
@@ -3537,7 +3563,7 @@ const autoGlossary = {
       const res = await fetch("/api/ai/glossary", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ key })
+        body: JSON.stringify({ key, model: state.selectedModel })
       });
       
       hide(el.aiSpinner);
@@ -3761,7 +3787,7 @@ const aiTranslator = {
       const res = await fetch("/api/ai/translate", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ key: state.activeKey, targetLanguage })
+        body: JSON.stringify({ key: state.activeKey, targetLanguage, model: state.selectedModel })
       });
 
       hide(el.aiSpinner);
@@ -3932,7 +3958,7 @@ const aiPodcast = {
       const res = await fetch("/api/ai/podcast/generate", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ key: state.activeKey, language })
+        body: JSON.stringify({ key: state.activeKey, language, model: state.selectedModel })
       });
 
       hide(el.aiSpinner);
@@ -4605,7 +4631,8 @@ const highlights = {
           key: state.activeKey,
           paragraphText: h.text,
           commentText: userText,
-          threadHistory
+          threadHistory,
+          model: state.selectedModel
         })
       });
 

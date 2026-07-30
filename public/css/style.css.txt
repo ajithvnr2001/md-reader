@@ -1167,6 +1167,36 @@ body {
   transform: scale(0.96);
 }
 
+.model-select {
+  padding: 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-card);
+  color: var(--text);
+  font-size: 0.78rem;
+  font-weight: 600;
+  font-family: var(--font-main);
+  outline: none;
+  cursor: pointer;
+  height: 34px;
+  transition: all 0.2s ease;
+}
+.model-select:hover {
+  border-color: var(--accent);
+  background: var(--accent-bg);
+  color: var(--accent);
+}
+
+.chat-model-badge {
+  font-size: 0.68rem;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: rgba(124, 107, 245, 0.1);
+  color: var(--accent);
+  border: 1px solid rgba(124, 107, 245, 0.2);
+}
+
 /* Suggested Questions & Key Concepts */
 .chat-extra {
   margin-top: 10px;

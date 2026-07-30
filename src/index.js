@@ -142,6 +142,48 @@ async function runGemini(env, messages, systemInstruction = "", responseMimeType
   throw new Error(`Unexpected Gemini response: ${JSON.stringify(data)}`);
 }
 
+function parseJsonResponse(rawText) {
+  if (!rawText) {
+    return { reply: "No response content generated.", summary: "No summary generated.", quiz: [], flashcards: [], terms: [], suggestedQuestions: [], keyConcepts: [] };
+  }
+  
+  if (typeof rawText === "object") return rawText;
+
+  // Direct parse
+  try {
+    return JSON.parse(rawText);
+  } catch (e) {}
+
+  // Strip markdown code fences ```json ... ``` or ``` ... ```
+  let cleaned = rawText.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
+  try {
+    return JSON.parse(cleaned);
+  } catch (e) {}
+
+  // Extract content between first { and last }
+  const firstBrace = cleaned.indexOf("{");
+  const lastBrace = cleaned.lastIndexOf("}");
+  if (firstBrace !== -1 && lastBrace > firstBrace) {
+    const jsonSubstring = cleaned.substring(firstBrace, lastBrace + 1);
+    try {
+      return JSON.parse(jsonSubstring);
+    } catch (e) {}
+  }
+
+  // Fallback: wrap raw text into a clean valid response object
+  return {
+    reply: rawText,
+    summary: rawText,
+    explanation: rawText,
+    fullTranslation: rawText,
+    translatedTitle: "Translation",
+    targetLanguage: "Target Language",
+    keyTerms: [],
+    suggestedQuestions: [],
+    keyConcepts: []
+  };
+}
+
 async function runMercury(env, messages, systemInstruction = "", responseMimeType = "text/plain", responseSchema = null) {
   const apiKey = env.INCEPTION_API_KEY || "***REMOVED-INCEPTION-KEY***";
   const url = "https://api.inceptionlabs.ai/v1/chat/completions";
@@ -150,7 +192,7 @@ async function runMercury(env, messages, systemInstruction = "", responseMimeTyp
   
   let fullSystemPrompt = systemInstruction || "";
   if (responseMimeType === "application/json") {
-    fullSystemPrompt += "\n\nCRITICAL OUTPUT REQUIREMENT: You MUST respond ONLY with valid, strictly raw JSON matching the requested schema. Do NOT include markdown codeblocks or extra text outside JSON.";
+    fullSystemPrompt += "\n\nCRITICAL OUTPUT REQUIREMENT: Respond strictly with valid JSON only. Do not wrap in markdown or add extra text.";
   }
 
   if (fullSystemPrompt.trim()) {
@@ -168,7 +210,9 @@ async function runMercury(env, messages, systemInstruction = "", responseMimeTyp
     }
 
     const role = (m.role === "assistant" || m.role === "model") ? "assistant" : "user";
-    formattedMessages.push({ role, content: text });
+    if (text) {
+      formattedMessages.push({ role, content: text });
+    }
   });
 
   const body = {
@@ -600,7 +644,7 @@ export default {
         const messages = [{ role: "user", content: `Please summarize this document:\n\n${text}` }];
         
         const responseText = await runAI(env, { model, messages, systemInstruction, responseMimeType: "application/json", responseSchema: summarizeSchema });
-        return json(JSON.parse(responseText));
+        return json(parseJsonResponse(responseText));
       } catch (err) {
         console.error("Summarize error:", err);
         return json({ error: err.message || "AI summarize failed" }, 500);
@@ -622,7 +666,7 @@ ${text}`;
           
         const messages = [{ role: "user", content: prompt }];
         const responseText = await runAI(env, { model, messages, systemInstruction, responseMimeType: "application/json", responseSchema: chatSchema });
-        return json(JSON.parse(responseText));
+        return json(parseJsonResponse(responseText));
       } catch (err) {
         console.error("Explain error:", err);
         return json({ error: err.message || "AI explain failed" }, 500);
@@ -640,7 +684,7 @@ ${text}`;
         const messages = [{ role: "user", content: `Please generate a quiz for this document:\n\n${text}` }];
         
         const responseText = await runAI(env, { model, messages, systemInstruction, responseMimeType: "application/json", responseSchema: quizSchema });
-        return json(JSON.parse(responseText));
+        return json(parseJsonResponse(responseText));
       } catch (err) {
         console.error("Quiz error:", err);
         return json({ error: err.message || "AI quiz failed" }, 500);
@@ -674,7 +718,7 @@ Always return your response structured according to the requested JSON schema.`;
         }
 
         const responseText = await runAI(env, { model, messages, systemInstruction, responseMimeType: "application/json", responseSchema: chatSchema });
-        return json(JSON.parse(responseText));
+        return json(parseJsonResponse(responseText));
       } catch (err) {
         console.error("Chat error:", err);
         return json({ error: err.message || "AI chat failed" }, 500);
@@ -692,7 +736,7 @@ Always return your response structured according to the requested JSON schema.`;
         const messages = [{ role: "user", content: `Please generate flashcards for this document:\n\n${text}` }];
         
         const responseText = await runAI(env, { model, messages, systemInstruction, responseMimeType: "application/json", responseSchema: flashcardsSchema });
-        return json(JSON.parse(responseText));
+        return json(parseJsonResponse(responseText));
       } catch (err) {
         console.error("Flashcards error:", err);
         return json({ error: err.message || "AI flashcards failed" }, 500);
@@ -710,7 +754,7 @@ Always return your response structured according to the requested JSON schema.`;
         const messages = [{ role: "user", content: `Please create a 1-page exam cheat sheet for this document:\n\n${text}` }];
         
         const responseText = await runAI(env, { model, messages, systemInstruction, responseMimeType: "application/json", responseSchema: cheatsheetSchema });
-        return json(JSON.parse(responseText));
+        return json(parseJsonResponse(responseText));
       } catch (err) {
         console.error("Cheatsheet error:", err);
         return json({ error: err.message || "AI cheatsheet failed" }, 500);
@@ -737,7 +781,7 @@ ${docContext}Target Paragraph:
           : [{ role: "user", content: commentText || "Please explain this paragraph." }];
 
         const responseText = await runAI(env, { model, messages, systemInstruction, responseMimeType: "application/json", responseSchema: chatSchema });
-        return json(JSON.parse(responseText));
+        return json(parseJsonResponse(responseText));
       } catch (err) {
         console.error("Comment error:", err);
         return json({ error: err.message || "AI comment failed" }, 500);
@@ -755,7 +799,7 @@ ${docContext}Target Paragraph:
         const messages = [{ role: "user", content: `Please extract key glossary terms for this document:\n\n${text}` }];
 
         const responseText = await runAI(env, { model, messages, systemInstruction, responseMimeType: "application/json", responseSchema: glossarySchema });
-        return json(JSON.parse(responseText));
+        return json(parseJsonResponse(responseText));
       } catch (err) {
         console.error("Glossary error:", err);
         return json({ error: err.message || "AI glossary failed" }, 500);
@@ -781,7 +825,7 @@ CRITICAL TRANSLATION GUIDELINES FOR ${targetLanguage}:
         const messages = [{ role: "user", content: `Please translate the full document below into natural, easy-to-understand modern ${targetLanguage}:\n\n${truncateForModel(text, 12000)}` }];
 
         const responseText = await runAI(env, { model, messages, systemInstruction, responseMimeType: "application/json", responseSchema: translateSchema });
-        return json(JSON.parse(responseText));
+        return json(parseJsonResponse(responseText));
       } catch (err) {
         console.error("Translation error:", err);
         return json({ error: err.message || "AI translation failed" }, 500);
@@ -829,7 +873,7 @@ Generate 6 to 12 dialogue turns covering the document thoroughly.`;
         const messages = [{ role: "user", content: `Please create a 2-host audio podcast dialogue script in natural modern ${language} for the following complete document:\n\n${truncateForModel(text, 12000)}` }];
 
         const responseText = await runAI(env, { model, messages, systemInstruction, responseMimeType: "application/json", responseSchema: podcastSchema });
-        const podcastData = JSON.parse(responseText);
+        const podcastData = parseJsonResponse(responseText);
 
         // Attempt TTS audio generation & R2 storage
         let audioKey = null;

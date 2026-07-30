@@ -1,6 +1,6 @@
 # 📖 MD Reader — AI-Powered Markdown Study Workspace
 
-> A mobile-friendly, edge-rendered Markdown reading workspace and intelligent study companion powered by **Cloudflare Workers**, **Cloudflare R2**, and **Google Gemini AI**.
+> A mobile-friendly, edge-rendered Markdown reading workspace and intelligent study companion powered by **Cloudflare Workers**, **Cloudflare R2**, **Google Gemini 3.5 Flash Lite**, and **Inception Labs Mercury 2**.
 
 ---
 
@@ -16,7 +16,7 @@
 
 ---
 
-### ✨ AI Study Suite (Gemini 3.5 Flash Lite)
+### ✨ AI Study Suite (Gemini 3.5 Flash Lite ↔ Mercury 2)
 - **✨ Document Summarizer**: Generate clean, bulleted summaries and core concept extractions from any document.
 - **🧠 Interactive Explainer & Mermaid.js Flowcharts**: Explain complex concepts with auto-generated, interactive **Mermaid.js** flowcharts and architecture diagrams.
 - **📝 Interactive Quizzes**: Generate 5-question multiple-choice quizzes with live scoring and explanations.
@@ -29,8 +29,9 @@
 - **💬 Paragraph Discussion Threads with `@AI`**: Leave comments on any highlighted section and tag `@AI` to discuss, explain, or debate points directly in the margin thread.
 - **🔍 Semantic Workspace Search & Synthesis**: Search across all files in your library or synthesize comparative study guides from multiple selected documents.
 
-### 🧠 Multi-Model AI Engine & Study Cards
-- **🚀 Dual AI Engine (Gemini 3.5 Flash Lite ↔ Mercury 2 by Inception Labs)**: Seamlessly toggle between **Gemini 3.5 Flash Lite** and **Mercury 2 (Inception API)** vice versa at any time via topbar or AI panel dropdowns. Switch models mid-chat with individual model badges (`Gemini 3.5` / `Mercury 2`) tagged on each response turn.
+### 🧠 Dual AI Engine & Multi-Model Switching
+- **🚀 Dual AI Engine (Gemini 3.5 Flash Lite ↔ Mercury 2 by Inception Labs)**: Seamlessly toggle between **Google Gemini 3.5 Flash Lite** and **Inception Labs Mercury 2** at any time via the topbar or AI panel model selector dropdowns. Switch models mid-chat — each response turn is tagged with a clear model badge (`Gemini 3.5` / `Mercury 2`) so you always know which engine answered.
+- **🔄 Universal Model Support**: Both models power **all** AI features identically — Summarize, Explain, Quiz, Flashcards, Cheat Sheet, Glossary, Translate, Podcast, Paragraph @AI Threads, and Multi-Document Synthesis. Your model choice is persisted across sessions via `localStorage`.
 - **📚 Multi-Document Comparative Synthesis**: Select multiple files in the sidebar and trigger cross-document comparative analysis and concept mapping powered by your chosen AI model.
 
 ---
@@ -65,7 +66,7 @@
 | :--- | :--- |
 | **Edge Compute** | [Cloudflare Workers](https://workers.cloudflare.com/) (V8 Serverless) |
 | **Object Storage** | [Cloudflare R2 Bucket](https://www.cloudflare.com/developer-platform/r2/) |
-| **AI Model** | [Google Gemini 3.5 Flash Lite](https://ai.google.dev/) via Workers API |
+| **AI Models** | [Google Gemini 3.5 Flash Lite](https://ai.google.dev/) + [Inception Labs Mercury 2](https://docs.inceptionlabs.ai/) (Dual Engine) |
 | **Frontend UI** | HTML5, Vanilla CSS3 (Design Tokens & HSL Variables), JavaScript (ESNext) |
 | **Diagrams & Math** | [Mermaid.js](https://mermaid.js.org/), [KaTeX](https://katex.org/), [Marked.js](https://marked.js.org/) |
 | **Packaging** | Wrangler CLI, PWA Service Worker, JSZip |
@@ -86,7 +87,7 @@ md-reader/
 │   ├── sw.js               # Service Worker for PWA offline shell caching
 │   └── icon.svg            # App icon asset
 ├── src/
-│   └── index.js            # Cloudflare Worker API routes (R2 bucket operations & Gemini AI integration)
+│   └── index.js            # Cloudflare Worker API routes (R2 ops, Gemini AI, Inception Mercury 2 integration)
 ├── wrangler.toml           # Cloudflare Worker configuration & environment bindings
 └── package.json            # Dependencies and deployment scripts
 ```
@@ -126,12 +127,17 @@ md-reader/
 
    [vars]
    AI_MODEL = "gemini-3.5-flash-lite"
+   INCEPTION_API_KEY = "your_inception_api_key_here"
    REQUIRE_AUTH = "false"
    ```
 
-4. **Set Gemini API Key Secret**:
+4. **Set API Key Secrets**:
    ```bash
+   # Google Gemini API Key (required)
    npx wrangler secret put GEMINI_API_KEY
+
+   # Inception Labs API Key (for Mercury 2 model — optional, can also be set in wrangler.toml [vars])
+   npx wrangler secret put INCEPTION_API_KEY
    ```
 
 5. **Run Locally**:
@@ -153,9 +159,9 @@ npm run deploy
 
 ## 🔒 Security & Privacy
 
-- **No Hardcoded Credentials**: API keys and secrets are supplied securely via Cloudflare Worker Secrets (`env.GEMINI_API_KEY`).
+- **No Hardcoded Credentials**: API keys are supplied securely via Cloudflare Worker Secrets (`env.GEMINI_API_KEY`, `env.INCEPTION_API_KEY`).
 - **Optional Authorization**: Write endpoints (upload, delete, rename) can be protected by setting `REQUIRE_AUTH = "true"` and defining `UPLOAD_SECRET`.
-- **Client-Side Privacy**: Highlights, notes, and local chat cache are stored locally in the user's browser `localStorage`.
+- **Client-Side Privacy**: Highlights, notes, model preferences, and local chat cache are stored locally in the user's browser `localStorage`.
 
 ---
 

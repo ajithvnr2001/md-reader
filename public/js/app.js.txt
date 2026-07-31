@@ -1368,6 +1368,12 @@ async function openFile(key) {
       highlights.restoreHighlights();
       // Document chrome: breadcrumb path + read-progress strip
       uiRefresh.updateDocChrome(key);
+      
+      // Per-doc auto-fullscreen preference
+      if (typeof window.__fs === "object" && window.__fs.isAutoDoc && window.__fs.isAutoDoc(key) && !window.__fs.isActive()) {
+        setTimeout(() => window.__fs.enter(), 350);
+      }
+      if (typeof window.__fs === "object" && window.__fs.refreshAuto) window.__fs.refreshAuto();
       // Re-apply cached glossary highlights automatically on open
       const cachedGlossary = state.aiCache[key] && state.aiCache[key].glossary;
       if (cachedGlossary && cachedGlossary.length) {
@@ -6619,6 +6625,7 @@ const readingProgress = {
       const max = readerEl.scrollHeight - readerEl.clientHeight;
       if (max <= 0) return;
       readingProgress.set(state.activeKey, Math.max(0, Math.min(1, readerEl.scrollTop / max)));
+      window.dispatchEvent(new CustomEvent("md-reader:read-progress", { detail: { key: state.activeKey } }));
       if (typeof uiRefresh === "object" && uiRefresh.updateReadStrip) uiRefresh.updateReadStrip(state.activeKey);
     }, 400);
   }, { passive: true });
@@ -7124,6 +7131,7 @@ if ('serviceWorker' in navigator) {
 })();
 
 /* ---------- ⛶ Full Screen Reading Mode ---------- */
+/* ---------- ⛶ Full Screen Reading Mode ---------- */
 (function initFullScreenMode() {
   const btn = el.fullScreenBtn;
   const controls = el.fullScreenControls;
@@ -7131,69 +7139,115 @@ if ('serviceWorker' in navigator) {
   const zoomOutBtn = el.fsZoomOutBtn;
   const zoomText = el.fsZoomLevelText;
   const exitBtn = el.fsExitBtn;
+  const readPct = document.getElementById("fsReadPct");
+  const autoBtn = document.getElementById("fsAutoBtn");
   if (!btn) return;
 
   const expandIcon = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>`;
   const shrinkIcon = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3v3a2 2 0 0 1-2 2H3m18 0h-3a2 2 0 0 1-2-2V3m0 18v-3a2 2 0 0 1 2-2h3M3 16h3a2 2 0 0 1 2 2v3"/></svg>`;
 
+  let isPseudoMode = false;   // CSS fallback when the Fullscreen API is unavailable/denied
+  let fadeTimer = null;
+  let pinchStart = null;
+
+  function apiSupported() {
+    return !!(document.documentElement.requestFullscreen || document.documentElement.webkitRequestFullscreen);
+  }
+
   function isFullScreen() {
     return !!(document.fullscreenElement || document.webkitFullscreenElement || document.mozFullScreenElement || document.msFullscreenElement);
   }
 
-  function toggleFullScreen() {
-    if (!isFullScreen()) {
+  function isActive() {
+    return isFullScreen() || isPseudoMode;
+  }
+
+  function enter() {
+    if (!state.activeKey) {
+      quickToast("⛶ Open a document first to enter Full Screen reading.");
+      return;
+    }
+    if (apiSupported()) {
       const docEl = document.documentElement;
-      if (docEl.requestFullscreen) {
-        docEl.requestFullscreen();
-      } else if (docEl.webkitRequestFullscreen) {
-        docEl.webkitRequestFullscreen();
-      } else if (docEl.mozRequestFullScreen) {
-        docEl.mozRequestFullScreen();
-      } else if (docEl.msRequestFullscreen) {
-        docEl.msRequestFullscreen();
-      }
+      const req = docEl.requestFullscreen ? docEl.requestFullscreen() : docEl.webkitRequestFullscreen();
+      Promise.resolve(req).catch(() => enterPseudo());
     } else {
-      exitFullScreen();
+      enterPseudo();
     }
   }
 
-  function exitFullScreen() {
-    if (document.exitFullscreen) {
-      document.exitFullscreen();
-    } else if (document.webkitExitFullscreen) {
-      document.webkitExitFullscreen();
-    } else if (document.mozCancelFullScreen) {
-      document.mozCancelFullScreen();
-    } else if (document.msExitFullscreen) {
-      document.msExitFullscreen();
+  function enterPseudo() {
+    isPseudoMode = true;
+    updateFullScreenUI(true);
+    quickToast("⛶ Simulated Full Screen (browser restriction) — every feature works the same.");
+  }
+
+  function exit() {
+    if (isPseudoMode) {
+      isPseudoMode = false;
+      updateFullScreenUI(false);
+      return;
     }
+    if (isFullScreen()) {
+      if (document.exitFullscreen) document.exitFullscreen();
+      else if (document.webkitExitFullscreen) document.webkitExitFullscreen();
+      else if (document.mozCancelFullScreen) document.mozCancelFullScreen();
+      else if (document.msExitFullscreen) document.msExitFullscreen();
+    }
+  }
+
+  function toggle() {
+    if (isActive()) exit();
+    else enter();
   }
 
   function updateZoomText() {
-    if (zoomText) {
-      zoomText.textContent = `${Math.round((state.fontScale || 1.0) * 100)}%`;
-    }
+    if (zoomText) zoomText.textContent = `${Math.round((state.fontScale || 1.0) * 100)}%`;
   }
 
-  function updateFullScreenUI() {
-    const full = isFullScreen();
+  function updateReadChip() {
+    if (!readPct || !state.activeKey) return;
+    const pct = (typeof readingProgress === "object" && readingProgress.percent) ? readingProgress.percent(state.activeKey) : 0;
+    readPct.textContent = pct > 0 ? `${pct}% read` : "";
+  }
+
+  /* ---- C: auto-fade controls (3s idle → translucent, hover/pointermove restores) ---- */
+  function armIdleFade() {
+    if (!controls) return;
+    controls.classList.remove("fs-faded");
+    clearTimeout(fadeTimer);
+    fadeTimer = setTimeout(() => { if (isActive()) controls.classList.add("fs-faded"); }, 3000);
+  }
+  if (controls) {
+    controls.addEventListener("pointerenter", () => { controls.classList.remove("fs-faded"); clearTimeout(fadeTimer); });
+    controls.addEventListener("pointerleave", armIdleFade);
+  }
+  document.addEventListener("pointermove", (e) => {
+    if (isActive() && controls && controls.style.display !== "none") armIdleFade();
+  }, { passive: true });
+
+  function updateFullScreenUI(force) {
+    const full = typeof force === "boolean" ? force : isActive();
     if (full) {
       document.body.classList.add("is-fullscreen");
       btn.classList.add("active");
       btn.innerHTML = shrinkIcon;
       btn.title = "Exit Full Screen Mode (ESC)";
-      if (controls) show(controls, 'flex');
+      if (controls) { show(controls, 'flex'); }
       updateZoomText();
+      updateReadChip();
+      armIdleFade();
     } else {
       document.body.classList.remove("is-fullscreen");
       btn.classList.remove("active");
       btn.innerHTML = expandIcon;
       btn.title = "Toggle Full Screen Mode";
       if (controls) hide(controls);
+      clearTimeout(fadeTimer);
     }
   }
 
-  btn.addEventListener("click", toggleFullScreen);
+  btn.addEventListener("click", toggle);
 
   if (zoomInBtn) {
     zoomInBtn.addEventListener("click", () => {
@@ -7211,12 +7265,81 @@ if ('serviceWorker' in navigator) {
     });
   }
 
-  if (exitBtn) {
-    exitBtn.addEventListener("click", exitFullScreen);
+  exitBtn.addEventListener("click", exit);
+
+  /* ---- B: keyboard — Ctrl+Shift+F toggle; ESC exits pseudo mode (native ESC covers API mode) ---- */
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "F" && e.ctrlKey && e.shiftKey) {
+      e.preventDefault();
+      toggle();
+      return;
+    }
+    if (e.key === "Escape" && isPseudoMode) exit();
+  });
+
+  /* ---- E: pinch font-zoom while in fullscreen (touch devices) ---- */
+  const readerEl = document.querySelector(".reader");
+  if (readerEl) {
+    readerEl.addEventListener("touchstart", (e) => {
+      if (!isActive() || e.touches.length !== 2) return;
+      pinchStart = {
+        dist: Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY),
+        scale: state.fontScale || 1
+      };
+    }, { passive: true });
+    readerEl.addEventListener("touchmove", (e) => {
+      if (!pinchStart || e.touches.length !== 2) return;
+      const d = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
+      state.fontScale = Math.max(0.7, Math.min(2.0, +(pinchStart.scale * (d / pinchStart.dist)).toFixed(2)));
+      applyFontScale();
+      updateZoomText();
+    }, { passive: true });
+    readerEl.addEventListener("touchend", () => { pinchStart = null; });
   }
 
+  /* ---- F: per-doc auto-fullscreen preference ---- */
+  function getAutoList() {
+    try { return JSON.parse(localStorage.getItem("md-reader-fs-auto") || "[]"); } catch (e) { return []; }
+  }
+  function isAuto(key) { return getAutoList().includes(key); }
+  function refreshAutoBtn() {
+    if (!autoBtn || !state.activeKey) return;
+    const on = isAuto(state.activeKey);
+    autoBtn.classList.toggle("active", on);
+    autoBtn.setAttribute("aria-pressed", on ? "true" : "false");
+    autoBtn.textContent = on ? "⏱ Auto ✓" : "⏱ Auto";
+  }
+  if (autoBtn) {
+    autoBtn.addEventListener("click", () => {
+      if (!state.activeKey) return;
+      let list = getAutoList();
+      if (isAuto(state.activeKey)) list = list.filter(k => k !== state.activeKey);
+      else list.push(state.activeKey);
+      localStorage.setItem("md-reader-fs-auto", JSON.stringify(list));
+      refreshAutoBtn();
+      quickToast(isAuto(state.activeKey) ? "⏱ Auto-fullscreen ON for this document" : "⏱ Auto-fullscreen OFF");
+    });
+  }
+
+  // Update chip + auto button when scrolling in fullscreen
+  window.addEventListener("md-reader:read-progress", () => {
+    if (isActive()) updateReadChip();
+  });
+
+  // Called from openFile after content renders
+  window.__fs = {
+    toggle,
+    enter,
+    exit,
+    isActive,
+    isPseudo: () => isPseudoMode,
+    refreshAuto: refreshAutoBtn,
+    updateReadChip,
+    isAutoDoc: isAuto
+  };
+
   ["fullscreenchange", "webkitfullscreenchange", "mozfullscreenchange", "MSFullscreenChange"].forEach(evt => {
-    document.addEventListener(evt, updateFullScreenUI);
+    document.addEventListener(evt, () => updateFullScreenUI());
   });
 })();
 

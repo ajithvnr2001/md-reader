@@ -832,11 +832,14 @@
 
     <!-- Floating Full Screen Control Bar (Zoom & Exit) -->
     <div id="fullScreenControls" class="fullscreen-controls" style="display:none">
-      <button id="fsZoomOutBtn" class="icon-btn" title="Zoom Out (A-)" style="padding:4px"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"/></svg></button>
+      <span id="fsReadPct" class="fs-read-pct" title="Reading progress"></span>
+      <span class="fs-zoom-label" title="Font zoom">A×</span>
+      <button id="fsZoomOutBtn" class="icon-btn" title="Zoom Out (A-)" aria-label="Zoom out" style="padding:4px"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"/></svg></button>
       <span id="fsZoomLevelText" style="font-size:0.78rem; font-weight:700; min-width:38px; text-align:center; user-select:none; color:var(--text)">100%</span>
-      <button id="fsZoomInBtn" class="icon-btn" title="Zoom In (A+)" style="padding:4px"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></button>
+      <button id="fsZoomInBtn" class="icon-btn" title="Zoom In (A+)" aria-label="Zoom in" style="padding:4px"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></button>
+      <button id="fsAutoBtn" class="fs-auto-btn" title="Auto-enter fullscreen on this document" aria-label="Toggle auto-fullscreen for this document">⏱ Auto</button>
       <div style="width:1px; height:16px; background:var(--border); margin:0 4px"></div>
-      <button id="fsExitBtn" class="icon-btn" title="Exit Full Screen (ESC)" style="padding:4px 10px; gap:4px; font-size:0.78rem; font-weight:600">
+      <button id="fsExitBtn" class="icon-btn" title="Exit Full Screen (ESC)" aria-label="Exit full screen" style="padding:4px 10px; gap:4px; font-size:0.78rem; font-weight:600">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
         <span>Exit</span>
       </button>

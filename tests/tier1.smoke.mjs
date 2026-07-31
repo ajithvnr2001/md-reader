@@ -23,6 +23,8 @@ window.Element.prototype.scrollIntoView = () => {};
 window.SpeechSynthesisUtterance = class { constructor(t) { this.text = t; } };
 window.speechSynthesis = { getVoices: () => [], speak: () => {}, cancel: () => {}, speaking: false };
 window.Response = Response;
+window.CSS = window.CSS || {};
+window.CSS.escape = window.CSS.escape || ((s) => String(s).replace(/([\[\]"\\.])/g, "\\$1"));
 window.confirm = () => true;
 
 /* ---- Server stub: in-memory bucket + trash + inbox ---- */

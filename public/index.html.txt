@@ -33,129 +33,108 @@
         <h1 class="title">📖 MD Reader</h1>
       </div>
       <div class="topbar-actions">
-        <!-- Search within document -->
-        <div id="searchDocContainer" class="search-doc-container" style="display:none;align-items:center;gap:6px">
-          <input type="text" id="searchDocInput" placeholder="Search in doc..." style="padding:6px 10px;border:1px solid var(--border);border-radius:var(--radius);background:var(--bg);color:var(--text);font-size:0.82rem;outline:none;width:130px;font-family:var(--font-main)">
-          <button id="searchDocPrev" class="icon-btn" title="Previous match" style="display:flex;align-items:center;justify-content:center;padding:4px"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="18 15 12 9 6 15"/></svg></button>
-          <button id="searchDocNext" class="icon-btn" title="Next match" style="display:flex;align-items:center;justify-content:center;padding:4px"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg></button>
-          <span id="searchDocStatus" style="font-size:0.75rem;color:var(--text-muted);min-width:32px;text-align:center">0/0</span>
-        </div>
-        <button id="searchDocToggleBtn" class="icon-btn" title="Search in document" style="display:none;padding:6px">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-        </button>
-
-        <!-- Edit Document -->
-        <button id="editBtn" class="icon-btn" title="Edit Document" style="display:none;padding:6px">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-        </button>
-
-        <!-- Split Mode Toggle -->
-        <button id="splitModeBtn" class="icon-btn" title="Toggle Split Screen Comparison" style="display:none;padding:6px">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="12" y1="3" x2="12" y2="21"/></svg>
-        </button>
-
-        <!-- Notes Panel Toggle -->
-        <button id="notesToggleBtn" class="icon-btn" title="Highlights & Notes" style="display:none;padding:6px">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/></svg>
-        </button>
-
-        <!-- Export PDF -->
-        <button id="exportPdfBtn" class="icon-btn" title="Export as PDF/Print" style="display:none;padding:6px">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
-        </button>
-
-        <!-- Export HTML -->
-        <button id="exportHtmlBtn" class="icon-btn" title="Export as HTML" style="display:none;padding:6px">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
-        </button>
-
-        <!-- Read Aloud -->
-        <div style="display:flex;align-items:center;gap:4px">
-          <button id="readAloudBtn" class="icon-btn" title="Read Aloud" style="display:none;padding:6px">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>
-          </button>
-          <select id="speechRateSelect" style="display:none; padding:4px 8px; border:1px solid var(--border); border-radius:var(--radius); background:var(--bg); color:var(--text); font-size:0.75rem; font-family:var(--font-main); outline:none; cursor:pointer; height:36px">
-            <option value="0.75">0.75x</option>
-            <option value="1">1.0x</option>
-            <option value="1.25">1.25x</option>
-            <option value="1.5">1.5x</option>
-            <option value="1.75">1.75x</option>
-            <option value="2">2.0x</option>
-          </select>
-        </div>
-
         <!-- AI Engine Switcher (Gemini 3.5 ↔ Mercury 2) -->
-        <select id="topbarAiModelSelect" class="model-select" title="Switch AI Engine (Gemini 3.5 ↔ Mercury 2)">
+        <select id="topbarAiModelSelect" class="model-select" title="Switch AI Engine (Gemini 3.5 ↔ Mercury 2)" aria-label="AI engine">
           <option value="gemini-3.5-flash-lite">✨ Gemini 3.5 Flash Lite</option>
           <option value="mercury-2">🚀 Mercury 2 (Inception)</option>
         </select>
 
         <button id="fontDownBtn" class="icon-btn" aria-label="Decrease font size" title="Decrease font">A−</button>
         <button id="fontUpBtn" class="icon-btn" aria-label="Increase font size" title="Increase font">A+</button>
-        
+
         <!-- Zen Focus Mode -->
-        <button id="zenModeBtn" class="icon-btn" title="Zen Focus Mode" style="padding:6px">
+        <button id="zenModeBtn" class="icon-btn" title="Zen Focus Mode" aria-label="Zen focus mode" style="padding:6px">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/></svg>
         </button>
 
         <!-- Full Screen Reading Mode -->
-        <button id="fullScreenBtn" class="icon-btn" title="Toggle Full Screen Mode" style="padding:6px">
+        <button id="fullScreenBtn" class="icon-btn" title="Toggle Full Screen Mode" aria-label="Toggle full screen" style="padding:6px">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>
         </button>
-        
-        <!-- Accent Color Theme -->
-        <div style="position:relative">
-          <button id="accentBtn" class="icon-btn" title="Choose Accent Color" style="padding:6px">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 22C17.5228 22 22 17.5228 22 12C22 6.47715 17.5228 2 12 2C6.47715 2 2 6.47715 2 12C2 14.7255 3.09032 17.1962 4.85857 19C5.03436 19.1758 5.14143 19.4242 5.14143 19.682C5.14143 20.4636 4.70425 21.1824 4.02703 21.5714C3.80556 21.6987 3.8647 22 4.12 22H12Z"/><circle cx="7.5" cy="10.5" r="1.5" fill="currentColor"/><circle cx="11.5" cy="7.5" r="1.5" fill="currentColor"/><circle cx="16.5" cy="9.5" r="1.5" fill="currentColor"/><circle cx="15.5" cy="14.5" r="1.5" fill="currentColor"/></svg>
-          </button>
-          <div id="accentPopover" class="accent-popover" style="display:none">
-            <div class="accent-popover-title">Choose Accent</div>
-            <div class="accent-swatches">
-              <button class="swatch indigo active" data-accent="indigo" style="background:#7c6bf5" title="Indigo"></button>
-              <button class="swatch emerald" data-accent="emerald" style="background:#10b981" title="Emerald"></button>
-              <button class="swatch sky" data-accent="sky" style="background:#0284c7" title="Sky Blue"></button>
-              <button class="swatch rose" data-accent="rose" style="background:#f43f5e" title="Rose Red"></button>
-              <button class="swatch amber" data-accent="amber" style="background:#f59e0b" title="Amber Gold"></button>
-            </div>
-          </div>
-        </div>
 
         <!-- Gamification Streak & XP Badge -->
-        <button id="gamificationBadge" class="gamification-badge-btn" title="View Gamification Badges & XP Level">
+        <button id="gamificationBadge" class="gamification-badge-btn" title="View Gamification Badges & XP Level" aria-label="Gamification badges and XP">
           <span id="streakDisplay">🔥 1d</span>
           <span id="levelDisplay">⚡ Lvl 1</span>
         </button>
 
-        <!-- Font Settings Toggle -->
+        <!-- ⋮ More tools overflow menu (document actions + settings entry) -->
         <div style="position:relative">
-          <button id="fontSettingsBtn" class="icon-btn" title="Font & Line Spacing" style="padding:6px">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="4 7 4 4 20 4 20 7"/><line x1="9" y1="20" x2="15" y2="20"/><line x1="12" y1="4" x2="12" y2="20"/></svg>
+          <button id="topbarMoreBtn" class="icon-btn" title="More tools &amp; settings" aria-label="More tools and settings" style="padding:6px">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg>
           </button>
-          <div id="fontSettingsPopover" class="font-settings-popover" style="display:none">
-            <div class="font-settings-popover-title">Typography Settings</div>
-            
-            <div class="font-setting-group">
-              <label for="fontFamilySelect" style="display:block; font-size:0.75rem; font-weight:600; color:var(--text-dim); margin-bottom:4px">Font Family</label>
-              <select id="fontFamilySelect" style="width:100%; padding:6px; font-size:0.8rem; background:var(--bg-elevated); color:var(--text); border:1px solid var(--border); border-radius:var(--radius); outline:none">
-                <option value="inter">Inter (Sans-Serif)</option>
-                <option value="roboto">Roboto (Clean Sans)</option>
-                <option value="merriweather">Merriweather (Serif)</option>
-                <option value="lexend">Lexend (Accessible)</option>
-                <option value="dyslexic">OpenDyslexic (Dyslexic-friendly)</option>
+          <div id="topbarMoreMenu" class="more-menu" style="display:none" role="menu">
+            <!-- Search within document -->
+            <div id="searchDocContainer" class="search-doc-container more-menu-search" style="display:none">
+              <input type="text" id="searchDocInput" placeholder="Search in doc..." />
+              <button id="searchDocPrev" class="icon-btn" title="Previous match" aria-label="Previous match"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="18 15 12 9 6 15"/></svg></button>
+              <button id="searchDocNext" class="icon-btn" title="Next match" aria-label="Next match"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg></button>
+              <span id="searchDocStatus">0/0</span>
+            </div>
+            <button id="searchDocToggleBtn" class="icon-btn" title="Search in document" style="display:none;padding:6px" aria-label="Search in document">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            </button>
+
+            <div class="more-menu-row" data-for="editBtn">
+              <button id="editBtn" class="icon-btn" title="Edit Document" style="display:none;padding:6px" aria-label="Edit document">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+              </button>
+              <span class="more-menu-label">📝 Edit Document</span>
+            </div>
+            <div class="more-menu-row" data-for="splitModeBtn">
+              <button id="splitModeBtn" class="icon-btn" title="Toggle Split Screen Comparison" style="display:none;padding:6px" aria-label="Split screen comparison">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="12" y1="3" x2="12" y2="21"/></svg>
+              </button>
+              <span class="more-menu-label">◫ Split Screen</span>
+            </div>
+            <div class="more-menu-row" data-for="notesToggleBtn">
+              <button id="notesToggleBtn" class="icon-btn" title="Highlights &amp; Notes" style="display:none;padding:6px" aria-label="Highlights and notes">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/></svg>
+              </button>
+              <span class="more-menu-label">🖍️ Highlights &amp; Notes</span>
+            </div>
+            <div class="more-menu-divider"></div>
+            <div class="more-menu-row" data-for="readAloudBtn">
+              <button id="readAloudBtn" class="icon-btn" title="Read Aloud" style="display:none;padding:6px" aria-label="Read aloud">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>
+              </button>
+              <span class="more-menu-label">🗣️ Read Aloud</span>
+              <select id="speechRateSelect" title="Speech rate" style="display:none; margin-left:auto; padding:3px 6px; border:1px solid var(--border); border-radius:var(--radius); background:var(--bg); color:var(--text); font-size:0.75rem; font-family:var(--font-main); outline:none; cursor:pointer">
+                <option value="0.75">0.75x</option>
+                <option value="1">1.0x</option>
+                <option value="1.25">1.25x</option>
+                <option value="1.5">1.5x</option>
+                <option value="1.75">1.75x</option>
+                <option value="2">2.0x</option>
               </select>
             </div>
-            
-            <div class="font-setting-group" style="margin-top:10px">
-              <label for="lineHeightSelect" style="display:block; font-size:0.75rem; font-weight:600; color:var(--text-dim); margin-bottom:4px">Line Spacing</label>
-              <select id="lineHeightSelect" style="width:100%; padding:6px; font-size:0.8rem; background:var(--bg-elevated); color:var(--text); border:1px solid var(--border); border-radius:var(--radius); outline:none">
-                <option value="1.4">Compact (1.4)</option>
-                <option value="1.6">Normal (1.6)</option>
-                <option value="1.8">Relaxed (1.8)</option>
-                <option value="2.0">Double (2.0)</option>
-              </select>
+            <div class="more-menu-divider"></div>
+            <div class="more-menu-row" data-for="exportPdfBtn">
+              <button id="exportPdfBtn" class="icon-btn" title="Export as PDF/Print" style="display:none;padding:6px" aria-label="Export as PDF">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+              </button>
+              <span class="more-menu-label">📄 Export as PDF</span>
+            </div>
+            <div class="more-menu-row" data-for="exportHtmlBtn">
+              <button id="exportHtmlBtn" class="icon-btn" title="Export as HTML" style="display:none;padding:6px" aria-label="Export as HTML">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+              </button>
+              <span class="more-menu-label">🌐 Export as HTML</span>
+            </div>
+            <div class="more-menu-divider"></div>
+            <div class="more-menu-row" data-for="settingsBtn">
+              <button id="settingsBtn" class="icon-btn" title="Appearance Settings" aria-label="Appearance settings" style="padding:6px">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+              </button>
+              <span class="more-menu-label">⚙️ Appearance Settings</span>
             </div>
           </div>
         </div>
+
+
+
+
+
 
         <!-- Theme Settings Toggle -->
         <div style="position:relative">
@@ -221,8 +200,11 @@
             </button>
           </div>
         </div>
-        <!-- Workspace Semantic Search -->
-        <div class="workspace-search-wrap" style="padding:0 12px;margin:8px 0 4px">
+        <!-- Workspace Semantic Search (AI Hub) -->
+        <div class="aihub-section" style="padding:0 12px;margin:10px 0 2px">
+          <div class="aihub-label">🤖 AI HUB</div>
+        </div>
+        <div class="workspace-search-wrap" style="padding:0 12px;margin:4px 0 4px">
           <div class="search-wrap" style="background:var(--bg-elevated);border:1px solid var(--border)">
             <input id="workspaceSearchInput" type="text" placeholder="Ask Workspace AI..." style="color:var(--text); padding-left:12px;" />
           </div>
@@ -251,6 +233,16 @@
 
       <!-- Main reading pane -->
       <main class="reader">
+        <!-- Document identity breadcrumb + read progress -->
+        <div id="breadcrumbBar" class="breadcrumb-bar" style="display:none">
+          <span id="breadcrumbPath" class="breadcrumb-path" title="Document path"></span>
+          <button id="copyDocLinkBtn" class="breadcrumb-copy-btn" title="Copy deep link (?doc=...)" aria-label="Copy deep link to this document">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+          </button>
+          <span id="breadcrumbProgress" class="breadcrumb-progress" title="Reading progress"></span>
+        </div>
+        <div id="readProgressStrip" class="read-progress-strip" style="display:none"><span id="readProgressFill"></span></div>
+
         <div id="emptyState" class="empty-state">
           <div class="empty-icon">📖</div>
           <h2>Welcome to MD Reader</h2>
@@ -343,21 +335,28 @@
           <button id="flashcardsBtn" class="ai-btn flashcards">
             <span class="ai-btn-icon">🗂️</span> Flashcards
           </button>
-          <button id="mindMapBtn" class="ai-btn explain" style="background:#5c3ca4;color:var(--accent-contrast)">
-            <span class="ai-btn-icon">🗺️</span> Mind Map
-          </button>
-          <button id="cheatSheetBtn" class="ai-btn quiz" style="background:#0284c7;color:#fff">
-            <span class="ai-btn-icon">📄</span> Cheat Sheet
-          </button>
-          <button id="autoGlossaryBtn" class="ai-btn summarize" style="background:#059669;color:#fff">
-            <span class="ai-btn-icon">🔍</span> Auto-Glossary
-          </button>
-          <button id="translateBtn" class="ai-btn explain" style="background:#d97706;color:#fff">
-            <span class="ai-btn-icon">🌐</span> AI Translate
-          </button>
-          <button id="podcastBtn" class="ai-btn quiz" style="background:#7c3aed;color:#fff">
-            <span class="ai-btn-icon">🎙️</span> AI Podcast
-          </button>
+          <div class="ai-more-wrap" style="position:relative">
+            <button id="aiMoreBtn" class="ai-btn more" aria-label="More AI tools">
+              <span class="ai-btn-icon">✚</span> More AI tools ▾
+            </button>
+            <div id="aiMoreMenu" class="ai-more-menu" style="display:none" role="menu">
+              <button id="mindMapBtn" class="ai-btn explain ai-more-item" style="background:#5c3ca4;color:var(--accent-contrast)">
+                <span class="ai-btn-icon">🗺️</span> Mind Map
+              </button>
+              <button id="cheatSheetBtn" class="ai-btn quiz ai-more-item" style="background:#0284c7;color:#fff">
+                <span class="ai-btn-icon">📄</span> Cheat Sheet
+              </button>
+              <button id="autoGlossaryBtn" class="ai-btn summarize ai-more-item" style="background:#059669;color:#fff">
+                <span class="ai-btn-icon">🔍</span> Auto-Glossary
+              </button>
+              <button id="translateBtn" class="ai-btn explain ai-more-item" style="background:#d97706;color:#fff">
+                <span class="ai-btn-icon">🌐</span> AI Translate
+              </button>
+              <button id="podcastBtn" class="ai-btn quiz ai-more-item" style="background:#7c3aed;color:#fff">
+                <span class="ai-btn-icon">🎙️</span> AI Podcast
+              </button>
+            </div>
+          </div>
         </div>
 
         <!-- Floating Annotation Toolbar (appears on text selection) -->
@@ -701,32 +700,67 @@
 
     <!-- Mind Map Modal -->
     <div id="mindMapModal" class="modal-overlay" style="display:none">
-      <div class="modal" style="max-width:90vw; width:90vw; height:90vh; max-height:90vh; display:flex; flex-direction:column">
-        <div class="modal-header">
-          <h2>🗺️ AI-Generated Mind Map</h2>
-          <div style="display:flex; align-items:center; gap:8px">
-            <!-- Mind Map Zoom & Export Controls -->
+      <div class="modal" style="max-width:92vw; width:92vw; height:92vh; max-height:92vh; display:flex; flex-direction:column">
+        <div class="modal-header" style="flex-wrap:wrap; gap:6px">
+          <h2 style="margin-right:auto">🗺️ AI-Generated Mind Map</h2>
+          <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap">
+            <!-- Layout switcher -->
+            <div id="mindMapLayoutGroup" class="mmlayout-group" role="group" aria-label="Layout">
+              <button id="mindMapLayoutTd" class="mmlayout-btn active" title="Top → Down layout">⇅</button>
+              <button id="mindMapLayoutLr" class="mmlayout-btn" title="Left → Right layout">⇄</button>
+              <button id="mindMapLayoutMm" class="mmlayout-btn" title="Radial mindmap layout">◉</button>
+            </div>
+            <button id="mindMapRegenBtn" class="icon-btn mm-action" title="Regenerate mind map (fresh AI call)" aria-label="Regenerate">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
+            </button>
+            <button id="mindMapEditBtn" class="icon-btn mm-action" title="Edit Mermaid source" aria-label="Edit Mermaid source">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+            </button>
+            <button id="mindMapCopyBtn" class="icon-btn mm-action" title="Copy Mermaid source" aria-label="Copy Mermaid source">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+            </button>
+            <!-- Zoom & Export Controls -->
             <div id="mindMapControls" style="display:flex; align-items:center; gap:4px; background:var(--bg-elevated); padding:2px 6px; border-radius:var(--radius); border:1px solid var(--border)">
-              <button id="mindMapZoomOut" class="icon-btn" title="Zoom Out" style="padding:4px"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"/></svg></button>
+              <button id="mindMapZoomOut" class="icon-btn" title="Zoom Out" style="padding:4px" aria-label="Zoom out"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"/></svg></button>
               <span id="mindMapZoomLevel" style="font-size:0.75rem; color:var(--text-dim); min-width:38px; text-align:center; user-select:none">100%</span>
-              <button id="mindMapZoomIn" class="icon-btn" title="Zoom In" style="padding:4px"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></button>
-              <button id="mindMapZoomReset" class="icon-btn" title="Reset Zoom" style="padding:4px; font-size:0.72rem; font-weight:600">100%</button>
+              <button id="mindMapZoomIn" class="icon-btn" title="Zoom In" style="padding:4px" aria-label="Zoom in"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></button>
+              <button id="mindMapZoomReset" class="icon-btn" title="Fit to view" style="padding:4px; font-size:0.72rem; font-weight:600" aria-label="Fit to view">Fit</button>
             </div>
             <button id="mindMapExportSvg" class="btn-primary" title="Export as SVG Diagram" style="padding:5px 12px; font-size:0.78rem; background:var(--accent); border:none; border-radius:var(--radius); color:var(--accent-contrast); cursor:pointer; font-weight:600; display:flex; align-items:center; gap:4px">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
               <span>SVG</span>
+            </button>
+            <button id="mindMapExportPng" class="btn-primary" title="Export as PNG Image" style="padding:5px 12px; font-size:0.78rem; background:#0284c7; border:none; border-radius:var(--radius); color:#fff; cursor:pointer; font-weight:600; display:flex; align-items:center; gap:4px">
+              <span>PNG</span>
             </button>
             <button id="mindMapModalClose" class="icon-btn" aria-label="Close">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
             </button>
           </div>
         </div>
-        <div class="modal-body" style="flex:1; display:flex; flex-direction:column; overflow:hidden; padding:20px; align-items:center; justify-content:center; background:var(--bg-card); border-radius:var(--radius); position:relative">
-          <div id="mindMapSpinner" class="spinner" style="display:none">
+        <div class="modal-body" style="flex:1; display:flex; flex-direction:column; overflow:hidden; padding:12px; align-items:stretch; justify-content:flex-start; background:var(--bg-card); border-radius:var(--radius); position:relative">
+          <div id="mindMapSelectionBar" class="mindmap-selection-bar" style="display:none">
+            <span id="mindMapSelectionText" style="color:var(--text); font-size:0.8rem"></span>
+            <span style="display:flex; gap:6px">
+              <button id="mindMapUseSelectionBtn" class="lib-mini-btn">🎯 Map this selection</button>
+              <button id="mindMapUseDocBtn" class="lib-mini-btn">📄 Map full doc</button>
+            </span>
+          </div>
+          <div id="mindMapEditPane" style="display:none; margin-bottom:8px; flex-direction:column; gap:6px">
+            <textarea id="mindMapEditText" spellcheck="false" style="width:100%; min-height:120px; padding:10px; background:var(--bg-elevated); color:var(--text); border:1px solid var(--border); border-radius:var(--radius); outline:none; font-family:var(--font-mono); font-size:0.78rem; resize:vertical"></textarea>
+            <div style="display:flex; gap:6px; align-items:center">
+              <button id="mindMapEditApplyBtn" class="btn-primary" style="padding:5px 14px; font-size:0.78rem">Apply &amp; Render</button>
+              <span id="mindMapEditError" style="font-size:0.75rem; color:var(--error)"></span>
+            </div>
+          </div>
+          <div id="mindMapSpinner" class="spinner" style="display:none; margin:auto">
             <div class="spinner-ring"></div>
             <span>Generating mind map layout…</span>
           </div>
-          <div id="mindMapContainer" style="width:100%; height:100%; overflow:auto; display:flex; justify-content:center; align-items:center"></div>
+          <div id="mindMapContainer" style="flex:1; width:100%; overflow:hidden; display:flex; justify-content:center; align-items:center; position:relative; touch-action:none">
+            <div id="mindMapCanvas" class="mindmap-canvas"></div>
+          </div>
+          <div id="mindMapHint" style="font-size:0.7rem; color:var(--text-dim); text-align:center; padding-top:6px">Drag to pan • Pinch/wheel to zoom • Click a node to focus its branch • Right-click (long-press) a node to ask the AI Tutor</div>
         </div>
       </div>
     </div>
@@ -784,10 +818,17 @@
       </div>
     </div>
 
-    <button id="exitZenBtn" style="display:none" title="Exit Zen Mode (ESC)">
-      <span>🧘 Exit Zen Mode</span>
-      <span style="font-size:0.7rem; opacity:0.7; background:rgba(255,255,255,0.15); padding:2px 6px; border-radius:4px">ESC</span>
-    </button>
+    <!-- Zen Mode controls (typewriter auto-center toggle + exit) -->
+    <div id="zenControlCluster" style="display:none">
+      <button id="zenTypeBtn" title="Typewriter auto-center (scroll active paragraph into view)" aria-label="Toggle typewriter auto-center">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="12" y1="3" x2="12" y2="21"/><polyline points="6 9 12 3 18 9"/><polyline points="6 15 12 21 18 15"/></svg>
+        <span>TT</span>
+      </button>
+      <button id="exitZenBtn" title="Exit Zen Mode (ESC)">
+        <span>🧘 Exit Zen Mode</span>
+        <span style="font-size:0.7rem; opacity:0.7; background:rgba(255,255,255,0.15); padding:2px 6px; border-radius:4px">ESC</span>
+      </button>
+    </div>
 
     <!-- Floating Full Screen Control Bar (Zoom & Exit) -->
     <div id="fullScreenControls" class="fullscreen-controls" style="display:none">
@@ -861,6 +902,65 @@
       </div>
     </div>
 
+    <!-- Settings Drawer (appearance hub) -->
+    <div id="drawerBackdrop" class="drawer-backdrop" style="display:none"></div>
+    <aside id="settingsDrawer" class="settings-drawer" style="display:none" role="dialog" aria-label="Appearance settings">
+      <div class="drawer-head">
+        <span>⚙️ Appearance</span>
+        <button id="settingsDrawerClose" class="icon-btn" aria-label="Close settings">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+      <div class="drawer-sec">
+        <div class="drawer-sec-title">Accent Color</div>
+        <div class="accent-swatches" id="drawerAccentSwatches">
+          <button class="swatch indigo active" data-accent="indigo" style="background:#7c6bf5" title="Indigo" aria-label="Indigo accent"></button>
+          <button class="swatch emerald" data-accent="emerald" style="background:#10b981" title="Emerald" aria-label="Emerald accent"></button>
+          <button class="swatch sky" data-accent="sky" style="background:#0284c7" title="Sky Blue" aria-label="Sky accent"></button>
+          <button class="swatch rose" data-accent="rose" style="background:#f43f5e" title="Rose Red" aria-label="Rose accent"></button>
+          <button class="swatch amber" data-accent="amber" style="background:#f59e0b" title="Amber Gold" aria-label="Amber accent"></button>
+        </div>
+      </div>
+      <div class="drawer-sec">
+        <label class="drawer-sec-title" for="fontFamilySelect">Font Family</label>
+        <select id="fontFamilySelect" class="drawer-select">
+          <option value="inter">Inter (Sans-Serif)</option>
+          <option value="roboto">Roboto (Clean Sans)</option>
+          <option value="merriweather">Merriweather (Serif)</option>
+          <option value="lexend">Lexend (Accessible)</option>
+          <option value="dyslexic">OpenDyslexic (Dyslexic-friendly)</option>
+        </select>
+      </div>
+      <div class="drawer-sec">
+        <label class="drawer-sec-title" for="lineHeightSelect">Line Spacing</label>
+        <select id="lineHeightSelect" class="drawer-select">
+          <option value="1.4">Compact (1.4)</option>
+          <option value="1.6">Normal (1.6)</option>
+          <option value="1.8">Relaxed (1.8)</option>
+          <option value="2.0">Double (2.0)</option>
+        </select>
+      </div>
+      <div class="drawer-sec">
+        <label class="drawer-sec-title" for="densitySelect">Layout Density</label>
+        <select id="densitySelect" class="drawer-select">
+          <option value="comfortable">Comfortable</option>
+          <option value="compact">Compact</option>
+        </select>
+      </div>
+      <div class="drawer-hint">Tip: Theme (day/night/sepia…) lives in the 🌙 button on the top bar.</div>
+    </aside>
+
+    <!-- Onboarding Tour overlay -->
+    <div id="tourOverlay" class="tour-overlay" style="display:none">
+      <div id="tourBubble" class="tour-bubble">
+        <div id="tourBubbleText" class="tour-bubble-text"></div>
+        <div class="tour-bubble-actions">
+          <button id="tourSkipBtn" class="tour-skip-btn">Skip</button>
+          <button id="tourNextBtn" class="tour-next-btn">Next</button>
+        </div>
+      </div>
+    </div>
+
     <!-- Quick Capture floating button -->
     <button id="quickCaptureBtn" class="quick-capture-fab" title="Quick Capture to Inbox" aria-label="Quick Capture">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
@@ -870,7 +970,7 @@
   </div>
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@10.9.1/dist/mermaid.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.8/dist/purify.min.js"></script>
   <script src="/app.js"></script>
 </body>

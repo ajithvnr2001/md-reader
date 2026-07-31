@@ -599,6 +599,30 @@ function pcmToWav(pcm, sampleRate = 24000, numChannels = 1, bitsPerSample = 16) 
  * Returns base64-encoded raw PCM (24kHz, mono, 16-bit) or null on failure.
  * One automatic retry — the model occasionally returns text tokens causing a 500.
  */
+// Recursive node-tree schema for mind maps (depth-limited: Gemini doesn't support $ref)
+function mindmapNodeSchema(depth) {
+  const node = {
+    type: "OBJECT",
+    properties: {
+      label: { type: "STRING", description: "Short node label (2-6 words, plain text, no punctuation)." }
+    },
+    required: ["label"]
+  };
+  if (depth > 1) {
+    node.properties.children = { type: "ARRAY", items: mindmapNodeSchema(depth - 1) };
+    node.required.push("children");
+  }
+  return node;
+}
+
+const mindmapSchema = {
+  type: "OBJECT",
+  properties: {
+    topic: mindmapNodeSchema(4)
+  },
+  required: ["topic"]
+};
+
 async function runGeminiTTS(env, prompt) {
   const apiKey = env.GEMINI_API_KEY;
   if (!apiKey) {
@@ -1253,6 +1277,61 @@ CRITICAL TRANSLATION GUIDELINES FOR ${targetLanguage}:
       } catch (err) {
         console.error("Translation error:", err);
         return json({ error: err.message || "AI translation failed" }, 500);
+      }
+    }
+
+    // ---- API: AI — mind map (structured node-tree JSON → deterministic client render) ----
+    if (pathname === "/api/ai/mindmap" && request.method === "POST") {
+      try {
+        const { key, model, selection } = await request.json();
+
+        let docText = "";
+        let docTitle = "Document";
+        if (key) {
+          const text = await getMarkdownText(env, key);
+          if (text === null) return json({ error: "File not found" }, 404);
+          docTitle = key.split("/").pop().replace(/\.(md|markdown)$/i, "");
+          docText = text;
+        }
+
+        const hasSelection = typeof selection === "string" && selection.trim().length > 0;
+        const sourceText = hasSelection ? selection.trim() : truncateForModel(docText);
+
+        const systemInstruction = `You create structured study mind maps from documents.
+Produce a topic hierarchy as EXACTLY this shape: {"topic": {"label": "...", "children": [{"label": "...", "children": [...]}]}}
+Rules:
+- Root label = the mind map's central subject${hasSelection ? "" : ` (use the document title: "${docTitle}" or a better conceptual one)`}
+- 3 to 6 main branches; each branch may have 2-4 sub-nodes; max depth 4 levels total
+- Every label must be SHORT (2-6 words), plain text, no colons/parentheses/markdown
+- Focus on conceptual structure and relationships, not sentences
+- Cover the ENTIRE ${hasSelection ? "selection" : "document"} evenly, basic → advanced`;
+
+        const messages = [{
+          role: "user",
+          content: `Build the mind map tree${hasSelection ? " for THIS SELECTED EXCERPT" : ""}:\n\n${sourceText}`
+        }];
+
+        const responseText = await runAI(env, { model, messages, systemInstruction, responseMimeType: "application/json", responseSchema: mindmapSchema });
+        const parsed = parseJsonResponse(responseText);
+
+        if (!parsed.topic || !parsed.topic.label) {
+          return json({ error: "Mind map model produced an invalid tree" }, 502);
+        }
+        // Defensive trim: cap breadth/depth so the SVG stays readable
+        const prune = (node, depth = 0) => {
+          if (!node || typeof node !== "object") return null;
+          node.label = String(node.label || "").replace(/[():?"'`\[\]{}<>]/g, "").trim().slice(0, 60) || "…";
+          let kids = Array.isArray(node.children) ? node.children : [];
+          node.children = depth >= 4 ? [] : kids.slice(0, 6).map((c) => prune(c, depth + 1)).filter(Boolean);
+          return node;
+        };
+        parsed.topic = prune(parsed.topic);
+        parsed.scoped = hasSelection;
+        parsed.docTitle = docTitle;
+        return json(parsed);
+      } catch (err) {
+        console.error("Mindmap error:", err);
+        return json({ error: err.message || "AI mindmap failed" }, 500);
       }
     }
 

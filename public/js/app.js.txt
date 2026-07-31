@@ -103,8 +103,27 @@ const el = {
   menuBtn: document.getElementById("menuBtn"),
   themeBtn: document.getElementById("themeBtn"),
   themePopover: document.getElementById("themePopover"),
-  accentBtn: document.getElementById("accentBtn"),
-  accentPopover: document.getElementById("accentPopover"),
+  // More-tools menu / Settings drawer refs
+  topbarMoreBtn: document.getElementById("topbarMoreBtn"),
+  topbarMoreMenu: document.getElementById("topbarMoreMenu"),
+  settingsBtn: document.getElementById("settingsBtn"),
+  settingsDrawer: document.getElementById("settingsDrawer"),
+  settingsDrawerClose: document.getElementById("settingsDrawerClose"),
+  drawerBackdrop: document.getElementById("drawerBackdrop"),
+  drawerAccentSwatches: document.getElementById("drawerAccentSwatches"),
+  densitySelect: document.getElementById("densitySelect"),
+  aiMoreBtn: document.getElementById("aiMoreBtn"),
+  aiMoreMenu: document.getElementById("aiMoreMenu"),
+  breadcrumbBar: document.getElementById("breadcrumbBar"),
+  breadcrumbPath: document.getElementById("breadcrumbPath"),
+  copyDocLinkBtn: document.getElementById("copyDocLinkBtn"),
+  breadcrumbProgress: document.getElementById("breadcrumbProgress"),
+  readProgressStrip: document.getElementById("readProgressStrip"),
+  readProgressFill: document.getElementById("readProgressFill"),
+  tourOverlay: document.getElementById("tourOverlay"),
+  tourBubbleText: document.getElementById("tourBubbleText"),
+  tourSkipBtn: document.getElementById("tourSkipBtn"),
+  tourNextBtn: document.getElementById("tourNextBtn"),
   fontUpBtn: document.getElementById("fontUpBtn"),
   fontDownBtn: document.getElementById("fontDownBtn"),
   summarizeBtn: document.getElementById("summarizeBtn"),
@@ -279,6 +298,21 @@ const el = {
   mindMapZoomReset: document.getElementById("mindMapZoomReset"),
   mindMapZoomLevel: document.getElementById("mindMapZoomLevel"),
   mindMapExportSvg: document.getElementById("mindMapExportSvg"),
+  mindMapExportPng: document.getElementById("mindMapExportPng"),
+  mindMapLayoutTd: document.getElementById("mindMapLayoutTd"),
+  mindMapLayoutLr: document.getElementById("mindMapLayoutLr"),
+  mindMapLayoutMm: document.getElementById("mindMapLayoutMm"),
+  mindMapRegenBtn: document.getElementById("mindMapRegenBtn"),
+  mindMapEditBtn: document.getElementById("mindMapEditBtn"),
+  mindMapCopyBtn: document.getElementById("mindMapCopyBtn"),
+  mindMapEditPane: document.getElementById("mindMapEditPane"),
+  mindMapEditText: document.getElementById("mindMapEditText"),
+  mindMapEditApplyBtn: document.getElementById("mindMapEditApplyBtn"),
+  mindMapEditError: document.getElementById("mindMapEditError"),
+  mindMapSelectionBar: document.getElementById("mindMapSelectionBar"),
+  mindMapSelectionText: document.getElementById("mindMapSelectionText"),
+  mindMapUseSelectionBtn: document.getElementById("mindMapUseSelectionBtn"),
+  mindMapUseDocBtn: document.getElementById("mindMapUseDocBtn"),
 
   // Workspace Search & Pomodoro refs
   workspaceSearchInput: document.getElementById("workspaceSearchInput"),
@@ -327,8 +361,8 @@ const el = {
   wordCountTextSecondary: document.getElementById("wordCountTextSecondary"),
   readingTimeTextSecondary: document.getElementById("readingTimeTextSecondary"),
   
-  fontSettingsBtn: document.getElementById("fontSettingsBtn"),
-  fontSettingsPopover: document.getElementById("fontSettingsPopover"),
+  fontSettingsBtn: null, // legacy — moved into the settings drawer
+  fontSettingsPopover: null,
   fontFamilySelect: document.getElementById("fontFamilySelect"),
   lineHeightSelect: document.getElementById("lineHeightSelect"),
 };
@@ -367,7 +401,10 @@ function resetActiveDocView() {
   hide(el.readingStatsBarSecondary);
   hide(el.editorContainer);
   show(el.emptyState);
+  if (typeof uiRefresh === "object" && uiRefresh.hideDocChrome) uiRefresh.hideDocChrome();
   if (typeof studyDashboard === "object" && studyDashboard.render) studyDashboard.render();
+  // Auto-exit Zen Mode — no doc = no distraction to hide, and nav must return
+  window.dispatchEvent(new CustomEvent("md-reader:doc-closed"));
 }
 
 /* ---------------- Theme ---------------- */
@@ -455,9 +492,9 @@ function applyAccent(accentName) {
   document.documentElement.style.setProperty("--accent-bg", themeColors.bg);
   document.documentElement.style.setProperty("--accent-glow", themeColors.glow);
   
-  // Highlight active swatch
-  if (el.accentPopover) {
-    el.accentPopover.querySelectorAll(".swatch").forEach(swatch => {
+  // Highlight active swatch (inside the settings drawer)
+  if (el.drawerAccentSwatches) {
+    el.drawerAccentSwatches.querySelectorAll(".swatch").forEach(swatch => {
       if (swatch.dataset.accent === state.activeAccent) {
         swatch.classList.add("active");
       } else {
@@ -540,75 +577,7 @@ if (el.themeBtn && el.themePopover) {
 
 applyTheme();
 
-/* ---------------- Accent Color Theme ---------------- */
-
-if (el.accentPopover) {
-  document.body.appendChild(el.accentPopover);
-  el.accentPopover.style.position = 'fixed';
-  el.accentPopover.style.zIndex = '99999';
-}
-
-function positionAccentPopover() {
-  if (!el.accentBtn || !el.accentPopover) return;
-  const rect = el.accentBtn.getBoundingClientRect();
-  let top = rect.bottom + 8;
-  let right = window.innerWidth - rect.right;
-  if (right < 8) right = 8;
-  el.accentPopover.style.top = top + 'px';
-  el.accentPopover.style.right = right + 'px';
-  el.accentPopover.style.left = 'auto';
-}
-
-if (el.accentBtn && el.accentPopover) {
-  el.accentBtn.addEventListener("click", (e) => {
-    e.stopPropagation();
-    const visible = el.accentPopover.style.display === "block";
-    if (visible) {
-      hide(el.accentPopover);
-    } else {
-      positionAccentPopover();
-      show(el.accentPopover, 'block');
-    }
-  });
-
-  el.accentBtn.addEventListener("touchend", (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    const visible = el.accentPopover.style.display === "block";
-    if (visible) {
-      hide(el.accentPopover);
-    } else {
-      positionAccentPopover();
-      show(el.accentPopover, 'block');
-    }
-  });
-
-  el.accentPopover.querySelectorAll(".swatch").forEach(swatch => {
-    swatch.addEventListener("click", (e) => {
-      e.stopPropagation();
-      applyAccent(swatch.dataset.accent);
-      hide(el.accentPopover);
-    });
-    swatch.addEventListener("touchend", (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      applyAccent(swatch.dataset.accent);
-      hide(el.accentPopover);
-    });
-  });
-
-  document.addEventListener("click", (e) => {
-    if (el.accentPopover && !el.accentPopover.contains(e.target) && !el.accentBtn.contains(e.target)) {
-      hide(el.accentPopover);
-    }
-  });
-  document.addEventListener("touchstart", (e) => {
-    if (el.accentPopover && el.accentPopover.style.display === "block" &&
-        !el.accentPopover.contains(e.target) && !el.accentBtn.contains(e.target)) {
-      hide(el.accentPopover);
-    }
-  }, { passive: true });
-}
+/* ---------------- Accent Color Theme (swatches now live in the Settings drawer) ---------------- */
 
 applyAccent(state.activeAccent);
 
@@ -672,80 +641,17 @@ function applyLineHeight(height) {
   }
 }
 
-// Move popover to body to prevent clipping
-if (el.fontSettingsPopover) {
-  document.body.appendChild(el.fontSettingsPopover);
-  el.fontSettingsPopover.style.position = 'fixed';
-  el.fontSettingsPopover.style.zIndex = '99999';
+// Drawer binding for font family & line spacing (elements live in the settings drawer)
+if (el.fontFamilySelect) {
+  el.fontFamilySelect.addEventListener("change", (e) => {
+    applyFontFamily(e.target.value);
+  });
 }
 
-function positionFontSettingsPopover() {
-  if (!el.fontSettingsBtn || !el.fontSettingsPopover) return;
-  const rect = el.fontSettingsBtn.getBoundingClientRect();
-  let top = rect.bottom + 8;
-  let right = window.innerWidth - rect.right;
-  if (right < 8) right = 8;
-  el.fontSettingsPopover.style.top = top + 'px';
-  el.fontSettingsPopover.style.right = right + 'px';
-  el.fontSettingsPopover.style.left = 'auto';
-}
-
-if (el.fontSettingsBtn && el.fontSettingsPopover) {
-  el.fontSettingsBtn.addEventListener("click", (e) => {
-    e.stopPropagation();
-    const visible = el.fontSettingsPopover.style.display === "block";
-    if (visible) {
-      hide(el.fontSettingsPopover);
-    } else {
-      positionFontSettingsPopover();
-      show(el.fontSettingsPopover, 'block');
-    }
+if (el.lineHeightSelect) {
+  el.lineHeightSelect.addEventListener("change", (e) => {
+    applyLineHeight(e.target.value);
   });
-
-  el.fontSettingsBtn.addEventListener("touchend", (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    const visible = el.fontSettingsPopover.style.display === "block";
-    if (visible) {
-      hide(el.fontSettingsPopover);
-    } else {
-      positionFontSettingsPopover();
-      show(el.fontSettingsPopover, 'block');
-    }
-  });
-
-  // Prevent closing popover when clicking inside it
-  el.fontSettingsPopover.addEventListener("click", (e) => {
-    e.stopPropagation();
-  });
-  el.fontSettingsPopover.addEventListener("touchstart", (e) => {
-    e.stopPropagation();
-  }, { passive: true });
-
-  if (el.fontFamilySelect) {
-    el.fontFamilySelect.addEventListener("change", (e) => {
-      applyFontFamily(e.target.value);
-    });
-  }
-
-  if (el.lineHeightSelect) {
-    el.lineHeightSelect.addEventListener("change", (e) => {
-      applyLineHeight(e.target.value);
-    });
-  }
-
-  // Close popover when clicking outside
-  document.addEventListener("click", (e) => {
-    if (el.fontSettingsPopover && !el.fontSettingsPopover.contains(e.target) && !el.fontSettingsBtn.contains(e.target)) {
-      hide(el.fontSettingsPopover);
-    }
-  });
-  document.addEventListener("touchstart", (e) => {
-    if (el.fontSettingsPopover && el.fontSettingsPopover.style.display === "block" &&
-        !el.fontSettingsPopover.contains(e.target) && !el.fontSettingsBtn.contains(e.target)) {
-      hide(el.fontSettingsPopover);
-    }
-  }, { passive: true });
 }
 
 // Initial typography application
@@ -1369,21 +1275,24 @@ async function openFile(key) {
     saveAiCache();
   }
   
-  // Hide active doc search bar
-  hide(el.searchDocContainer);
-  show(el.searchDocToggleBtn, 'flex');
+  // In-doc search bar lives inside the ⋮ More menu (always visible when a doc is open)
+  show(el.searchDocContainer, 'flex');
+  hide(el.searchDocToggleBtn);
   el.searchDocInput.value = "";
   originalContentHtml = ""; // Reset cached original HTML
   
-  // Update active file class dynamically in the DOM
-  el.fileList.querySelectorAll(".file-item").forEach((item) => {
-    const itemKey = item.dataset.key;
-    if (itemKey === state.activeKey || (state.isSplitMode && itemKey === state.secondaryKey)) {
-      item.classList.add("active");
-    } else {
-      item.classList.remove("active");
-    }
-  });
+  // Update active file class (O(1) — only touch previously-marked + new items)
+  if (state._lastActiveItems) {
+    state._lastActiveItems.forEach(n => n.classList.remove("active"));
+  }
+  state._lastActiveItems = [];
+  const markActive = (key) => {
+    if (!key) return;
+    const item = el.fileList.querySelector(`.file-item[data-key="${CSS.escape(key)}"]`);
+    if (item) { item.classList.add("active"); state._lastActiveItems.push(item); }
+  };
+  markActive(state.activeKey);
+  if (state.isSplitMode) markActive(state.secondaryKey);
 
   const targetContent = isSecondary ? el.contentSecondary : el.content;
   const targetStatsBar = isSecondary ? el.readingStatsBarSecondary : el.readingStatsBar;
@@ -1391,12 +1300,14 @@ async function openFile(key) {
   hide(el.emptyState);
   show(targetContent);
   
-  targetContent.innerHTML = `<div style="text-align:center;padding:40px;color:var(--text-muted)">
-    <div class="loading-dots" style="display:flex;gap:4px;justify-content:center;margin-bottom:12px">
-      <span></span><span></span><span></span>
-    </div>
-    Loading…
-  </div>`;
+  targetContent.innerHTML = isSecondary
+    ? `<div style="text-align:center;padding:40px;color:var(--text-muted)">
+        <div class="loading-dots" style="display:flex;gap:4px;justify-content:center;margin-bottom:12px">
+          <span></span><span></span><span></span>
+        </div>
+        Loading…
+      </div>`
+    : uiRefresh.readerSkeleton();
 
   try {
     const res = await fetch(`/api/file?key=${encodeURIComponent(key)}`, { cache: "no-store" });
@@ -1455,6 +1366,8 @@ async function openFile(key) {
       updateReadingStats(mdText);
       buildTOC();
       highlights.restoreHighlights();
+      // Document chrome: breadcrumb path + read-progress strip
+      uiRefresh.updateDocChrome(key);
       // Re-apply cached glossary highlights automatically on open
       const cachedGlossary = state.aiCache[key] && state.aiCache[key].glossary;
       if (cachedGlossary && cachedGlossary.length) {
@@ -3540,196 +3453,516 @@ el.fileList.addEventListener("drop", async (e) => {
   await moveFileViaApi(oldKey, targetFolder);
 });
 
-/* ---------------- Mind Map Logic ---------------- */
-let currentMindMapZoom = 1.0;
-let isMindMapDragging = false;
-let mindMapStartX = 0, mindMapStartY = 0;
-let mindMapScrollLeft = 0, mindMapScrollTop = 0;
+/* ================================================================
+   MIND MAP STUDIO
+   Deterministic mind maps: AI produces a JSON node tree → we render
+   Mermaid ourselves (TD / LR / radial), with auto-fit zoom, touch
+   pinch/pan, regenerate/edit/copy, SVG+PNG export, and interactive nodes.
+   ================================================================ */
+const mindMapStudio = {
+  tree: null,
+  treeScope: null,         // { type: 'doc'|'selection' }
+  layout: localStorage.getItem("md-reader-mindmap-layout") || "TD",
+  currentCode: "",
+  zoom: 1,
+  fitZoom: 1,
+  editing: false,
+  focusedLabel: null,
 
-function setMindMapZoom(zoom) {
-  currentMindMapZoom = Math.max(0.3, Math.min(3.0, zoom));
-  if (el.mindMapZoomLevel) {
-    el.mindMapZoomLevel.textContent = `${Math.round(currentMindMapZoom * 100)}%`;
-  }
-  const svg = el.mindMapContainer.querySelector('svg');
-  if (svg) {
-    svg.style.transition = 'transform 0.2s ease-out';
-    svg.style.transform = `scale(${currentMindMapZoom})`;
-    svg.style.transformOrigin = 'center center';
-  }
-}
+  _flat: [],               // [{ idx, id, label, parent, depth }]
+  _container: null,
+  _dragState: null,
+  _themeObserver: null,
 
-function initMindMapControls() {
-  if (el.mindMapZoomIn) {
-    el.mindMapZoomIn.addEventListener('click', () => setMindMapZoom(currentMindMapZoom + 0.2));
-  }
-  if (el.mindMapZoomOut) {
-    el.mindMapZoomOut.addEventListener('click', () => setMindMapZoom(currentMindMapZoom - 0.2));
-  }
-  if (el.mindMapZoomReset) {
-    el.mindMapZoomReset.addEventListener('click', () => setMindMapZoom(1.0));
-  }
+  /* ---------------- init ---------------- */
+  init() {
+    this._container = document.getElementById("mindMapContainer");
 
-  // Mouse wheel zoom inside container
-  if (el.mindMapContainer) {
-    el.mindMapContainer.addEventListener('wheel', (e) => {
+    // Open modal
+    el.mindMapBtn.addEventListener("click", () => this.open());
+    el.mindMapModalClose.addEventListener("click", () => hide(el.mindMapModal));
+
+    // Zoom controls
+    el.mindMapZoomIn.addEventListener("click", () => this.setZoom(this.zoom * 1.2));
+    el.mindMapZoomOut.addEventListener("click", () => this.setZoom(this.zoom / 1.2));
+    el.mindMapZoomReset.addEventListener("click", () => this.applyFit());
+
+    // Layout switcher
+    const layoutBtns = { TD: el.mindMapLayoutTd, LR: el.mindMapLayoutLr, mindmap: el.mindMapLayoutMm };
+    for (const [layout, btn] of Object.entries(layoutBtns)) {
+      btn.addEventListener("click", () => this.setLayout(layout));
+    }
+
+    // Regenerate / edit / copy / exports
+    el.mindMapRegenBtn.addEventListener("click", () => this.regenerate());
+    el.mindMapEditBtn.addEventListener("click", () => this.toggleEditor());
+    el.mindMapEditApplyBtn.addEventListener("click", () => this.applyEditedCode());
+    el.mindMapCopyBtn.addEventListener("click", () => this.copyCode());
+    el.mindMapExportSvg.addEventListener("click", () => this.exportSvg());
+    el.mindMapExportPng.addEventListener("click", () => this.exportPng());
+
+    // Selection scope bar
+    el.mindMapUseSelectionBtn.addEventListener("click", () => this.generateFromSelection());
+    el.mindMapUseDocBtn.addEventListener("click", () => this.generateFromDoc(true));
+
+    // Wheel zoom (desktop)
+    this._container.addEventListener("wheel", (e) => {
       e.preventDefault();
-      const delta = e.deltaY < 0 ? 0.15 : -0.15;
-      setMindMapZoom(currentMindMapZoom + delta);
+      const delta = e.deltaY < 0 ? 1.12 : 1 / 1.12;
+      this.setZoom(this.zoom * delta);
     }, { passive: false });
 
-    // Drag to Pan container
-    el.mindMapContainer.addEventListener('mousedown', (e) => {
-      if (e.target.closest('button')) return;
-      isMindMapDragging = true;
-      el.mindMapContainer.style.cursor = 'grabbing';
-      mindMapStartX = e.pageX - el.mindMapContainer.offsetLeft;
-      mindMapStartY = e.pageY - el.mindMapContainer.offsetTop;
-      mindMapScrollLeft = el.mindMapContainer.scrollLeft;
-      mindMapScrollTop = el.mindMapContainer.scrollTop;
+    // Mouse drag pan (native scroll + drag for mice)
+    this._container.addEventListener("mousedown", (e) => {
+      if (e.target.closest("button, .node")) return;
+      this._dragState = { x: e.clientX, y: e.clientY, sl: this._container.scrollLeft, st: this._container.scrollTop, moved: false };
+      this._container.style.cursor = "grabbing";
+    });
+    window.addEventListener("mousemove", (e) => {
+      if (!this._dragState) return;
+      const dx = e.clientX - this._dragState.x;
+      const dy = e.clientY - this._dragState.y;
+      if (Math.abs(dx) + Math.abs(dy) > 3) this._dragState.moved = true;
+      this._container.scrollLeft = this._dragState.sl - dx;
+      this._container.scrollTop = this._dragState.st - dy;
+    });
+    window.addEventListener("mouseup", () => {
+      this._dragState = null;
+      this._container.style.cursor = "";
     });
 
-    el.mindMapContainer.addEventListener('mouseleave', () => {
-      isMindMapDragging = false;
-      el.mindMapContainer.style.cursor = 'grab';
-    });
+    // Touch: single-finger pan, two-finger pinch zoom
+    this._touchStart = null;
+    this._container.addEventListener("touchstart", (e) => {
+      if (e.touches.length === 1) {
+        this._touchStart = { mode: "pan", x: e.touches[0].clientX, y: e.touches[0].clientY, sl: this._container.scrollLeft, st: this._container.scrollTop };
+      } else if (e.touches.length === 2) {
+        const d = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
+        this._touchStart = { mode: "pinch", dist: d, zoom: this.zoom };
+      }
+    }, { passive: true });
+    this._container.addEventListener("touchmove", (e) => {
+      if (!this._touchStart) return;
+      if (this._touchStart.mode === "pan" && e.touches.length === 1) {
+        this._container.scrollLeft = this._touchStart.sl - (e.touches[0].clientX - this._touchStart.x);
+        this._container.scrollTop = this._touchStart.st - (e.touches[0].clientY - this._touchStart.y);
+      } else if (this._touchStart.mode === "pinch" && e.touches.length === 2) {
+        const d = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
+        this.setZoom(this._touchStart.zoom * (d / this._touchStart.dist));
+      }
+    }, { passive: true });
+    this._container.addEventListener("touchend", () => { this._touchStart = null; });
 
-    el.mindMapContainer.addEventListener('mouseup', () => {
-      isMindMapDragging = false;
-      el.mindMapContainer.style.cursor = 'grab';
+    // Node click: subtree focus. Background click: reset.
+    this._container.addEventListener("click", (e) => {
+      const label = this.resolveNodeLabel(e.target);
+      if (label) this.focusSubtree(label);
+      else this.resetFocus();
     });
-
-    el.mindMapContainer.addEventListener('mousemove', (e) => {
-      if (!isMindMapDragging) return;
+    // Right-click (or long-press): ask AI about node
+    this._container.addEventListener("contextmenu", (e) => {
+      const label = this.resolveNodeLabel(e.target);
+      if (!label) return;
       e.preventDefault();
-      const x = e.pageX - el.mindMapContainer.offsetLeft;
-      const y = e.pageY - el.mindMapContainer.offsetTop;
-      const walkX = (x - mindMapStartX) * 1.5;
-      const walkY = (y - mindMapStartY) * 1.5;
-      el.mindMapContainer.scrollLeft = mindMapScrollLeft - walkX;
-      el.mindMapContainer.scrollTop = mindMapScrollTop - walkY;
+      this.askAboutNode(label);
     });
-  }
+    let longPressTimer = null;
+    this._container.addEventListener("touchstart", (e) => {
+      const label = this.resolveNodeLabel(e.target);
+      if (!label) return;
+      longPressTimer = setTimeout(() => { this.askAboutNode(label); longPressTimer = null; }, 650);
+    }, { passive: true });
+    this._container.addEventListener("touchend", () => { clearTimeout(longPressTimer); longPressTimer = null; });
+    this._container.addEventListener("touchmove", () => { clearTimeout(longPressTimer); longPressTimer = null; });
 
-  // Download SVG Export
-  if (el.mindMapExportSvg) {
-    el.mindMapExportSvg.addEventListener('click', () => {
-      const svg = el.mindMapContainer.querySelector('svg');
-      if (!svg) {
-        alert("No SVG diagram available to export.");
-        return;
-      }
-
-      const cloneSvg = svg.cloneNode(true);
-      cloneSvg.style.transform = 'none'; // reset scale transform for export
-      cloneSvg.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
-
-      const serializer = new XMLSerializer();
-      let svgString = serializer.serializeToString(cloneSvg);
-
-      // Add XML declaration
-      if (!svgString.match(/^<\?xml/)) {
-        svgString = '<?xml version="1.0" standalone="no"?>\n' + svgString;
-      }
-
-      const blob = new Blob([svgString], { type: 'image/svg+xml;charset=utf-8' });
-      const url = URL.createObjectURL(blob);
-      const docTitle = (state.activeKey || 'document').replace(/[^a-zA-Z0-9_\.-]/g, '_');
-      
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = `mind-map-${docTitle}.svg`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(url);
+    // Theme change → re-render with the right mermaid palette
+    this._themeObserver = new MutationObserver(() => {
+      if (el.mindMapModal.style.display !== "none" && this.currentCode) this.render(this.currentCode, false);
     });
-  }
-}
+    this._themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+  },
 
-initMindMapControls();
+  /* ---------------- open + scope handling ---------------- */
+  open() {
+    if (!state.activeKey) return;
+    show(el.mindMapModal, 'flex');
+    this.focusedLabel = null;
 
-el.mindMapModalClose.addEventListener("click", () => {
-  hide(el.mindMapModal);
-});
-
-el.mindMapBtn.addEventListener("click", async () => {
-  if (!state.activeKey) return;
-  show(el.mindMapModal, 'flex');
-  show(el.mindMapSpinner);
-  el.mindMapContainer.innerHTML = "";
-  setMindMapZoom(1.0);
-  
-  const key = state.activeKey;
-  
-  // Try local memory cache
-  if (state.aiCache[key] && state.aiCache[key].mindmap) {
-    renderMermaidMap(state.aiCache[key].mindmap);
-    return;
-  }
-  
-  try {
-    const res = await fetch("/api/ai/chat", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        key,
-        model: state.selectedModel,
-        messages: [{
-          role: "user",
-          parts: [{
-            text: "Create a visual concept map of the main topics and relationships in this document using Mermaid.js syntax. You MUST start with a valid Mermaid diagram tag (e.g. 'graph TD' or 'mindmap'). Return ONLY the Mermaid code block starting with ```mermaid and ending with ```. Do not include any other explanations or conversations."
-          }]
-        }]
-      })
-    });
-    
-    if (!res.ok) throw new Error("API call failed");
-    const data = await res.json();
-    
-    const match = data.reply.match(/```mermaid([\s\S]*?)```/);
-    const mermaidCode = match ? match[1].trim() : data.reply.trim();
-    
-    if (!state.aiCache[key]) state.aiCache[key] = {};
-    state.aiCache[key].mindmap = mermaidCode;
-    saveAiCache();
-    
-    renderMermaidMap(mermaidCode);
-  } catch (err) {
-    el.mindMapContainer.innerHTML = `<div style="color:var(--error);text-align:center;padding:20px">⚠️ Failed to generate mind map: ${escapeHtml(err.message)}</div>`;
-    hide(el.mindMapSpinner);
-  }
-});
-
-function renderMermaidMap(code) {
-  try {
-    if (window.mermaid) {
-      mermaid.render("mermaid-graph-svg-" + Date.now(), code).then(({ svg }) => {
-        el.mindMapContainer.innerHTML = svg;
-        el.mindMapContainer.style.cursor = 'grab';
-        setMindMapZoom(1.0);
-        hide(el.mindMapSpinner);
-      }).catch(err => {
-        showMermaidFallback(code, err.message);
-      });
+    // Offer selection-scope if text is selected
+    const sel = (window.getSelection().toString() || "").trim();
+    if (sel.length > 60 && el.mindMapSelectionText) {
+      el.mindMapSelectionText.textContent = `You have ${sel.length} characters of text selected`;
+      show(el.mindMapSelectionBar, 'flex');
     } else {
-      throw new Error("Mermaid library not loaded.");
+      hide(el.mindMapSelectionBar);
     }
-  } catch (err) {
-    showMermaidFallback(code, err.message);
-  }
-}
 
-function showMermaidFallback(code, errMsg) {
-  el.mindMapContainer.innerHTML = `
-    <div style="width:100%;text-align:center;padding:20px;color:var(--text-dim)">
-      <p style="color:var(--error);margin-bottom:12px">⚠️ Diagram rendering error: ${errMsg}</p>
-      <p>Raw Mermaid layout code:</p>
-      <pre style="text-align:left;background:var(--bg-elevated);border:1px solid var(--border);border-radius:var(--radius);padding:16px;max-width:600px;margin:12px auto;overflow:auto;font-family:var(--font-mono);font-size:0.82rem;line-height:1.5">${escapeHtml(code)}</pre>
-    </div>
-  `;
-  hide(el.mindMapSpinner);
-}
+    // Cached tree for this scope?
+    const cache = state.aiCache[state.activeKey];
+    if (cache && cache.mindmapTree) {
+      this.tree = cache.mindmapTree;
+      this.treeScope = cache.mindmapScope || { type: "doc" };
+      this.renderTree();
+      return;
+    }
+    this.generateFromDoc(false);
+  },
+
+  async generateFromDoc(force) {
+    hide(el.mindMapSelectionBar);
+    await this.generate({ selection: null, force });
+  },
+
+  async generateFromSelection() {
+    const sel = (window.getSelection().toString() || "").trim();
+    hide(el.mindMapSelectionBar);
+    if (!sel) return this.generateFromDoc(false);
+    await this.generate({ selection: sel, force: true });
+  },
+
+  async generate({ selection, force }) {
+    if (!state.activeKey) return;
+    show(el.mindMapSpinner, 'flex');
+    this._container.style.display = "none";
+    el.mindMapEditError.textContent = "";
+
+    const cache = state.aiCache[state.activeKey];
+    if (!force && cache && cache.mindmapTree) {
+      this.tree = cache.mindmapTree;
+      this.renderTree();
+      return;
+    }
+
+    try {
+      const res = await fetch("/api/ai/mindmap", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ key: state.activeKey, model: state.selectedModel, selection })
+      });
+      const data = await res.json();
+      hide(el.mindMapSpinner);
+      this._container.style.display = "";
+      if (!res.ok || data.error) throw new Error(data.error || `HTTP ${res.status}`);
+
+      this.tree = data.topic;
+      this.treeScope = { type: data.scoped ? "selection" : "doc" };
+      cache.mindmapTree = this.tree;
+      cache.mindmapScope = this.treeScope;
+      saveAiCache();
+      this.editing = false;
+      this.renderTree();
+    } catch (err) {
+      hide(el.mindMapSpinner);
+      this._container.style.display = "";
+      this._container.innerHTML = `<div style="color:var(--error);text-align:center;padding:24px">⚠️ Failed to generate mind map: ${escapeHtml(err.message)}<br><button class="lib-mini-btn" id="mindMapRetryInline" style="margin-top:12px">🔄 Retry</button></div>`;
+      const rb = this._container.querySelector("#mindMapRetryInline");
+      if (rb) rb.addEventListener("click", () => this.generate({ selection, force: true }));
+    }
+  },
+
+  regenerate() {
+    const cache = state.aiCache[state.activeKey];
+    if (cache) delete cache.mindmapTree;
+    this.focusedLabel = null;
+    this.generate({ selection: this.treeScope && this.treeScope.type === "selection" ? (window.getSelection().toString() || null) : null, force: true });
+  },
+
+  /* ---------------- tree → mermaid conversion ---------------- */
+  _escapeLabel(s) {
+    return String(s).replace(/"/g, "'").replace(/[<>]/g, " ").trim();
+  },
+
+  buildFlat() {
+    this._flat = [];
+    const walk = (node, parentIdx, depth) => {
+      const idx = this._flat.length;
+      this._flat.push({ idx, id: `n${idx}`, label: node.label, parent: parentIdx, depth });
+      (node.children || []).forEach(c => walk(c, idx, depth + 1));
+      return idx;
+    };
+    walk(this.tree, -1, 0);
+  },
+
+  childrenOf(idx) {
+    return this._flat.filter(n => n.parent === idx).map(n => n.idx);
+  },
+
+  treeToMermaid(layout) {
+    if (!this.tree) return "";
+    this.buildFlat();
+    const dir = layout === "LR" ? "LR" : "TD";
+
+    if (layout === "mindmap") {
+      const lines = ["mindmap"];
+      const write = (idx, depth) => {
+        const n = this._flat[idx];
+        lines.push("  ".repeat(depth + 1) + `${depth === 0 ? `root((${this._escapeLabel(n.label)}))` : this._escapeLabel(n.label)}`);
+        (this.tree ? this.childrenOf(idx) : []).forEach(c => write(c, depth + 1));
+      };
+      write(0, 0);
+      return lines.join("\n");
+    }
+
+    const lines = [`graph ${dir}`];
+    this._flat.forEach(n => {
+      lines.push(`  ${n.id}["${this._escapeLabel(n.label)}"]`);
+    });
+    this._flat.forEach(n => {
+      if (n.parent >= 0) lines.push(`  n${n.parent} --> ${n.id}`);
+    });
+    // NOTE: mermaid's style grammar does NOT accept var()/parentheses in values
+    lines.push(`  style n0 fill:#5b4fd8,color:#ffffff,stroke:#4338ca`);
+    return lines.join("\n");
+  },
+
+  /* ---------------- rendering: auto-fit zoom + sizing ---------------- */
+  async renderTree() {
+    this.currentCode = this.treeToMermaid(this.layout);
+    const paneOpen = this.editing;
+    if (paneOpen && el.mindMapEditText) el.mindMapEditText.value = this.currentCode;
+    await this.render(this.currentCode, true);
+  },
+
+  async render(code, fitAfter = true) {
+    if (!window.mermaid) {
+      this.showFallback(code, "Mermaid library not loaded.");
+      return;
+    }
+    try {
+      mermaid.initialize({ startOnLoad: false, theme: state.theme === "night" || state.theme === "oled" || state.theme === "forest" || state.theme === "frost" ? "dark" : "default", securityLevel: "loose", flowchart: { curve: "basis" } });
+      const { svg } = await mermaid.render(`mindmap-svg-${Date.now()}`, code);
+      this.currentCode = code;
+      const canvas = document.getElementById("mindMapCanvas");
+      canvas.innerHTML = svg;
+      const svgEl = canvas.querySelector("svg");
+      if (!svgEl) throw new Error("No SVG produced");
+
+      // Natural size from the rendered graphics bounding box
+      svgEl.style.position = "absolute";
+      svgEl.style.left = "0";
+      svgEl.style.top = "0";
+      svgEl.style.width = "100%";
+      svgEl.style.height = "100%";
+      let bbox;
+      try { bbox = svgEl.getBBox(); } catch (e) { bbox = { width: 800, height: 600 }; }
+      canvas.style.position = "relative";
+      canvas.style.width = bbox.width + "px";
+      canvas.style.height = bbox.height + "px";
+
+      if (fitAfter) this.applyFit();
+      else this.setZoom(this.zoom); // re-render without auto-fit (theme change)
+      hide(el.mindMapSpinner);
+      this._container.style.display = "";
+    } catch (err) {
+      this.showFallback(this.currentCode || code, err.message);
+    }
+  },
+
+  applyFit() {
+    const canvas = document.getElementById("mindMapCanvas");
+    const cw = this._container.clientWidth - 48;
+    const ch = this._container.clientHeight - 48;
+    if (!cw || !ch) { this.setZoom(1); return; }
+    const w = parseFloat(canvas.style.width) || cw;
+    const h = parseFloat(canvas.style.height) || ch;
+    this.fitZoom = Math.max(0.3, Math.min(1.0, Math.min(cw / w, ch / h)));
+    // Center the wrapper in the container
+    canvas.style.margin = "24px auto";
+    this.setZoom(this.fitZoom);
+  },
+
+  setZoom(z) {
+    this.zoom = Math.max(0.2, Math.min(4.0, z));
+    if (el.mindMapZoomLevel) el.mindMapZoomLevel.textContent = `${Math.round(this.zoom * 100)}%`;
+    const canvas = document.getElementById("mindMapCanvas");
+    const svgEl = canvas.querySelector("svg");
+    if (svgEl) {
+      svgEl.style.transform = `scale(${this.zoom})`;
+      svgEl.style.transformOrigin = "0 0";
+    }
+    // Grow the layout box so scrolling covers the scaled content
+    if (canvas._baseW) {
+      canvas.style.width = (canvas._baseW * this.zoom) + "px";
+      canvas.style.height = (canvas._baseH * this.zoom) + "px";
+    } else {
+      canvas._baseW = parseFloat(canvas.style.width) || canvas.offsetWidth;
+      canvas._baseH = parseFloat(canvas.style.height) || canvas.offsetHeight;
+      canvas.style.width = (canvas._baseW * this.zoom) + "px";
+      canvas.style.height = (canvas._baseH * this.zoom) + "px";
+    }
+  },
+
+  showFallback(code, errMsg) {
+    this._container.innerHTML = `<div id="mindMapCanvas" class="mindmap-canvas" style="width:100%;text-align:center;padding:20px;color:var(--text-dim)">
+      <p style="color:var(--error);margin-bottom:12px">⚠️ Diagram rendering error: ${escapeHtml(errMsg)}</p>
+      <p>Raw Mermaid layout code (edit below and Apply):</p>
+    </div>`;
+    if (!this.editing) this.toggleEditor();
+    hide(el.mindMapSpinner);
+  },
+
+  /* ---------------- editor / copy / export ---------------- */
+  toggleEditor() {
+    this.editing = !this.editing;
+    el.mindMapEditPane.style.display = this.editing ? "flex" : "none";
+    el.mindMapEditError.textContent = "";
+    if (this.editing) el.mindMapEditText.value = this.currentCode;
+  },
+
+  async applyEditedCode() {
+    el.mindMapEditError.textContent = "";
+    const code = el.mindMapEditText.value.trim();
+    if (!code) { el.mindMapEditError.textContent = "Empty source"; return; }
+    try {
+      await mermaid.render(`mm-${Date.now()}`, code);
+    } catch (err) {
+      el.mindMapEditError.textContent = "Mermaid syntax error: " + err.message;
+      return;
+    }
+    await this.render(code, true);
+    this.toggleEditor();
+    quickToast("✅ Mind map updated");
+  },
+
+  copyCode() {
+    if (!this.currentCode) return;
+    navigator.clipboard.writeText(this.currentCode)
+      .then(() => quickToast("⧉ Mermaid source copied"))
+      .catch(() => window.prompt("Copy Mermaid source:", this.currentCode));
+  },
+
+  exportSvg() {
+    const canvas = document.getElementById("mindMapCanvas");
+    const svg = canvas.querySelector("svg");
+    if (!svg) { alert("No diagram to export."); return; }
+    const clone = svg.cloneNode(true);
+    clone.style.transform = "none";
+    clone.style.position = "static";
+    clone.setAttribute("width", canvas._baseW || svg.getBBox().width);
+    clone.setAttribute("height", canvas._baseH || svg.getBBox().height);
+    clone.setAttribute("xmlns", "http://www.w3.org/2000/svg");
+    const serializer = new XMLSerializer();
+    let s = serializer.serializeToString(clone);
+    if (!s.match(/^<\?xml/)) s = '<?xml version="1.0" standalone="no"?>\n' + s;
+    this.downloadBlob(new Blob([s], { type: "image/svg+xml;charset=utf-8" }), `.svg`);
+  },
+
+  exportPng() {
+    const canvas = document.getElementById("mindMapCanvas");
+    const svg = canvas.querySelector("svg");
+    if (!svg) { alert("No diagram to export."); return; }
+    const clone = svg.cloneNode(true);
+    clone.style.transform = "none";
+    clone.setAttribute("xmlns", "http://www.w3.org/2000/svg");
+    const w = (canvas._baseW || 800), h = (canvas._baseH || 600);
+    clone.setAttribute("width", w);
+    clone.setAttribute("height", h);
+    const xml = new XMLSerializer().serializeToString(clone);
+
+    const img = new Image();
+    const svgUrl = URL.createObjectURL(new Blob([xml], { type: "image/svg+xml;charset=utf-8" }));
+    img.onload = () => {
+      const scale = 2;
+      const cv = document.createElement("canvas");
+      cv.width = w * scale;
+      cv.height = h * scale;
+      const ctx = cv.getContext("2d");
+      ctx.fillStyle = getComputedStyle(document.body).getPropertyValue("--bg-card") || "#ffffff";
+      ctx.fillRect(0, 0, cv.width, cv.height);
+      ctx.drawImage(img, 0, 0, cv.width, cv.height);
+      URL.revokeObjectURL(svgUrl);
+      cv.toBlob((blob) => { if (blob) this.downloadBlob(blob, `.png`); }, "image/png");
+    };
+    img.onerror = () => { URL.revokeObjectURL(svgUrl); alert("PNG export failed for this diagram."); };
+    img.src = svgUrl;
+  },
+
+  downloadBlob(blob, ext) {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    const name = (state.activeKey || "mindmap").split("/").pop().replace(/\.(md|markdown)$/i, "");
+    a.href = url;
+    a.download = `mind-map-${name}${ext}`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  },
+
+  /* ---------------- node interactivity ---------------- */
+  resolveNodeLabel(target) {
+    if (!this._flat.length) return null;
+    const g = target.closest ? target.closest("g") : null;
+    if (!g) return null;
+    // Flowchart: g.node with id like flowchart-n3-975 → index 3
+    const id = g.id || "";
+    const m = id.match(/n(\d+)/);
+    if (m && this._flat[+m[1]]) return this._flat[+m[1]].label;
+    // Mindmap layout fallback: match by text
+    const text = (g.textContent || "").trim();
+    const hit = this._flat.find(n => text === n.label || text.endsWith(n.label));
+    return hit ? hit.label : null;
+  },
+
+  _relationSet(label) {
+    const idx = this._flat.findIndex(n => n.label === label);
+    if (idx < 0) return null;
+    const set = new Set([idx]);
+    // ancestors
+    let p = this._flat[idx].parent;
+    while (p >= 0) { set.add(p); p = this._flat[p].parent; }
+    // descendants
+    const addKids = (i) => { this.childrenOf(i).forEach(c => { set.add(c); addKids(c); }); };
+    addKids(idx);
+    return set;
+  },
+
+  focusSubtree(label) {
+    this.focusedLabel = label;
+    const keep = this._relationSet(label);
+    if (!keep) return;
+    const svg = document.getElementById("mindMapCanvas").querySelector("svg");
+    if (!svg) return;
+    svg.querySelectorAll("g.node, g.edgePaths, g.edgeLabels, .mindmap-node, .mindmap-link").forEach(elm => {
+      const lbl = this.resolveNodeLabel(elm);
+      if (lbl && !keep.has(this._flat.findIndex(n => n.label === lbl))) {
+        elm.style.opacity = "0.18";
+      } else if (lbl) {
+        // keep relations of the target visible even when they include non-resolvable edges
+        const idx = this._flat.findIndex(n => n.label === lbl);
+        elm.style.opacity = keep.has(idx) ? "1" : "0.18";
+      } else {
+        elm.style.opacity = "1";
+      }
+    });
+    quickToast(`🗺️ Focused branch: "${label}" — click background to reset`);
+  },
+
+  resetFocus() {
+    if (!this.focusedLabel) return;
+    this.focusedLabel = null;
+    const svg = document.getElementById("mindMapCanvas").querySelector("svg");
+    if (svg) svg.querySelectorAll("g, .mindmap-node, .mindmap-link").forEach(elm => { elm.style.opacity = ""; });
+  },
+
+  askAboutNode(label) {
+    hide(el.mindMapModal);
+    openAiPanel("🧠 Study Tutor", true, 'chat');
+    const key = state.activeKey;
+    if (state.aiCache[key]) state.chatHistory = state.aiCache[key].chatHistory || [];
+    sendChatPrompt(`Explain the concept "${label}" from my mind map in the context of this document.`);
+  },
+
+  setLayout(layout) {
+    this.layout = layout;
+    localStorage.setItem("md-reader-mindmap-layout", layout);
+    [el.mindMapLayoutTd, el.mindMapLayoutLr, el.mindMapLayoutMm].forEach(b => b.classList.remove("active"));
+    (layout === "TD" ? el.mindMapLayoutTd : layout === "LR" ? el.mindMapLayoutLr : el.mindMapLayoutMm).classList.add("active");
+    this.focusedLabel = null;
+    if (this.tree) this.renderTree();
+  }
+};
+mindMapStudio.init();
 
 /* ---------------- Multi-File Synthesis Logic ---------------- */
 el.synthesisModeBtn.addEventListener("click", () => {
@@ -5984,6 +6217,7 @@ async function initApp() {
   aiPodcast.init();
   topicFocus.init();
   splitScreen.init();
+  uiRefresh.init();
 
   // Global event delegation for in-page anchor links in the Markdown content
   el.content.addEventListener('click', (e) => {
@@ -6124,12 +6358,222 @@ async function initApp() {
   const docParam = new URLSearchParams(window.location.search).get("doc");
   if (docParam && state.files.some((f) => f.key === docParam)) {
     openFile(docParam);
+    // Test/UX hook: #zen starts the session in Zen Mode
+    if (location.hash === "#zen" && window.__zen && window.__zen.set) {
+      setTimeout(() => window.__zen.set(true), 400);
+    }
   } else if (savedActiveKey && state.files.some((f) => f.key === savedActiveKey)) {
     openFile(savedActiveKey);
   } else {
     studyDashboard.render();
+    uiRefresh.maybeStartTour();
   }
 }
+
+/* ================================================================
+   UI REFRESH — overflow menu, settings drawer, AI dropup,
+   breadcrumb, read strip, density, onboarding tour, focus trap
+   ================================================================ */
+
+/* ---------- Lightweight modal focus trap ---------- */
+const focusTrap = {
+  _activeFor: null,
+  _prevFocus: null,
+  start(dialog) {
+    if (!dialog) return;
+    this._prevFocus = document.activeElement;
+    this._activeFor = dialog;
+    const focusables = dialog.querySelectorAll('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])');
+    if (focusables.length) focusables[0].focus();
+    this._keyHandler = (e) => {
+      if (e.key !== 'Tab' || this._activeFor !== dialog) return;
+      const nodes = [...dialog.querySelectorAll('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])')]
+        .filter(n => !n.disabled && n.offsetParent !== null);
+      if (!nodes.length) return;
+      const first = nodes[0], last = nodes[nodes.length - 1];
+      if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+      else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+    };
+    document.addEventListener('keydown', this._keyHandler);
+  },
+  stop() {
+    if (this._keyHandler) document.removeEventListener('keydown', this._keyHandler);
+    this._keyHandler = null;
+    this._activeFor = null;
+    if (this._prevFocus && this._prevFocus.focus) this._prevFocus.focus();
+    this._prevFocus = null;
+  }
+};
+
+const uiRefresh = {
+  init() {
+    /* ---------- ⋮ More tools menu ---------- */
+    if (el.topbarMoreBtn && el.topbarMoreMenu) {
+      el.topbarMoreBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const open = el.topbarMoreMenu.style.display === "block";
+        el.topbarMoreMenu.style.display = open ? "none" : "block";
+      });
+      // Row clicks forward to the row's real button
+      el.topbarMoreMenu.querySelectorAll(".more-menu-row").forEach(row => {
+        row.addEventListener("click", (e) => {
+          const btn = row.querySelector("button");
+          if (btn && !btn.disabled && btn.style.display !== "none" && e.target !== btn && !btn.contains(e.target)) {
+            btn.click();
+          }
+        });
+      });
+      document.addEventListener("click", (e) => {
+        if (!el.topbarMoreMenu.contains(e.target) && e.target !== el.topbarMoreBtn && !el.topbarMoreBtn.contains(e.target)) {
+          hide(el.topbarMoreMenu);
+        }
+      });
+    }
+
+    /* ---------- ⚙️ Settings drawer ---------- */
+    const openDrawer = () => {
+      show(el.settingsDrawer, 'block');
+      show(el.drawerBackdrop, 'block');
+      hide(el.topbarMoreMenu);
+      focusTrap.start(el.settingsDrawer);
+    };
+    const closeDrawer = () => {
+      hide(el.settingsDrawer);
+      hide(el.drawerBackdrop);
+      focusTrap.stop();
+    };
+    if (el.settingsBtn) el.settingsBtn.addEventListener("click", (e) => { e.stopPropagation(); openDrawer(); });
+    if (el.settingsDrawerClose) el.settingsDrawerClose.addEventListener("click", closeDrawer);
+    if (el.drawerBackdrop) el.drawerBackdrop.addEventListener("click", closeDrawer);
+
+    if (el.drawerAccentSwatches) {
+      el.drawerAccentSwatches.querySelectorAll(".swatch").forEach(swatch => {
+        swatch.addEventListener("click", () => {
+          applyAccent(swatch.dataset.accent);
+          quickToast(`🎨 Accent: ${swatch.title}`);
+        });
+      });
+    }
+
+    if (el.densitySelect) {
+      el.densitySelect.value = localStorage.getItem("md-reader-density") || "comfortable";
+      el.densitySelect.addEventListener("change", (e) => this.applyDensity(e.target.value));
+      this.applyDensity(el.densitySelect.value);
+    }
+
+    /* ---------- AI toolbar: More AI tools dropup ---------- */
+    if (el.aiMoreBtn && el.aiMoreMenu) {
+      el.aiMoreBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        el.aiMoreMenu.style.display = el.aiMoreMenu.style.display === "block" ? "none" : "block";
+      });
+      el.aiMoreMenu.querySelectorAll(".ai-more-item").forEach(btn => {
+        btn.addEventListener("click", () => hide(el.aiMoreMenu));
+      });
+      document.addEventListener("click", (e) => {
+        if (!el.aiMoreMenu.contains(e.target) && e.target !== el.aiMoreBtn && !el.aiMoreBtn.contains(e.target)) {
+          hide(el.aiMoreMenu);
+        }
+      });
+    }
+
+    /* ---------- Copy deep link ---------- */
+    if (el.copyDocLinkBtn) {
+      el.copyDocLinkBtn.addEventListener("click", async () => {
+        if (!state.activeKey) return;
+        const link = `${location.origin}/?doc=${encodeURIComponent(state.activeKey)}`;
+        try {
+          await navigator.clipboard.writeText(link);
+          quickToast("🔗 Deep link copied!");
+        } catch (e) {
+          window.prompt("Copy this link:", link);
+        }
+      });
+    }
+
+    /* ---------- Onboarding tour (first run) ---------- */
+    this.initTour();
+  },
+
+  applyDensity(mode) {
+    const val = mode === "compact" ? "compact" : "comfortable";
+    document.documentElement.setAttribute("data-density", val);
+    localStorage.setItem("md-reader-density", val);
+    if (el.densitySelect) el.densitySelect.value = val;
+  },
+
+  /* ---------- Breadcrumb & read strip ---------- */
+  updateDocChrome(key) {
+    if (!el.breadcrumbBar) return;
+    const parts = key.split('/');
+    el.breadcrumbPath.textContent = parts.join(" / ");
+    el.breadcrumbBar.title = key;
+    show(el.breadcrumbBar, 'flex');
+    show(el.readProgressStrip, 'block');
+    this.updateReadStrip(key);
+  },
+
+  updateReadStrip(key) {
+    const pct = readingProgress.percent(key || state.activeKey);
+    if (el.readProgressFill) el.readProgressFill.style.width = pct + "%";
+    if (el.breadcrumbProgress) el.breadcrumbProgress.textContent = pct > 0 ? `${pct}% read` : "";
+  },
+
+  hideDocChrome() {
+    if (el.breadcrumbBar) hide(el.breadcrumbBar);
+    if (el.readProgressStrip) hide(el.readProgressStrip);
+  },
+
+  /* ---------- Skeleton loader for the reader ---------- */
+  readerSkeleton() {
+    return `<div class="skeleton-wrap" aria-hidden="true">
+      <div class="skeleton skeleton-title" style="width:60%"></div>
+      <div class="skeleton skeleton-line" style="width:96%"></div>
+      <div class="skeleton skeleton-line" style="width:88%"></div>
+      <div class="skeleton skeleton-line" style="width:92%"></div>
+      <div class="skeleton skeleton-line" style="width:70%"></div>
+      <div class="skeleton skeleton-line" style="width:90%"></div>
+    </div>`;
+  },
+
+  /* ---------- Onboarding tour ---------- */
+  initTour() {
+    if (localStorage.getItem("md-reader-tour-seen")) return;
+    const steps = [
+      { sel: "#sidebar", text: "📚 Your library lives here — search, upload, organize into folders, restore from Trash." },
+      { sel: "#aiToolbar", text: "🤖 AI tools for every doc: summarize, quiz, flashcards — and 5 more under 'More AI tools'." },
+      { sel: "#topbarMoreBtn", text: "⋮ Extra actions (edit, split view, exports, read-aloud) and Appearance Settings are tucked in here." },
+      { sel: "#pomodoroWidget", text: "⏱️ Focus with the Pomodoro timer and earn XP for reading." },
+      { sel: "#quickCaptureBtn", text: "⚡ Capture a thought anytime — it lands in today's Inbox note automatically." }
+    ];
+    let idx = 0;
+    const overlay = el.tourOverlay;
+    if (!overlay) return;
+
+    const showStep = () => {
+      if (idx >= steps.length) { this.endTour(); return; }
+      const target = document.querySelector(steps[idx].sel);
+      el.tourBubbleText.textContent = steps[idx].text;
+      el.tourNextBtn.textContent = idx === steps.length - 1 ? "Finish" : "Next";
+      show(overlay, 'block');
+    };
+
+    el.tourNextBtn.addEventListener("click", () => { idx++; showStep(); });
+    el.tourSkipBtn.addEventListener("click", () => this.endTour());
+    // Don't show tour until the app has loaded (called from initApp)
+    this._pendingTour = () => showStep();
+  },
+
+  maybeStartTour() {
+    if (this._pendingTour) { this._pendingTour(); this._pendingTour = null; }
+  },
+
+  endTour() {
+    localStorage.setItem("md-reader-tour-seen", "1");
+    hide(el.tourOverlay);
+  }
+};
+
 
 /* ================================================================
    TIER-1 FEATURES
@@ -6175,6 +6619,7 @@ const readingProgress = {
       const max = readerEl.scrollHeight - readerEl.clientHeight;
       if (max <= 0) return;
       readingProgress.set(state.activeKey, Math.max(0, Math.min(1, readerEl.scrollTop / max)));
+      if (typeof uiRefresh === "object" && uiRefresh.updateReadStrip) uiRefresh.updateReadStrip(state.activeKey);
     }, 400);
   }, { passive: true });
 })();
@@ -6538,29 +6983,42 @@ if ('serviceWorker' in navigator) {
 /* ---------- 🎯 Focus / Zen Mode & Typewriter Scrolling ---------- */
 (function initZenMode() {
   let isZenMode = false;
+  let typewriterEnabled = localStorage.getItem("md-reader-zen-typewriter") === "1";
+  let typeTimer = null;
+  let lastActiveEl = null;
   const readerContainer = document.querySelector('.reader');
   const content = document.getElementById('content');
-  const exitBtn = el.exitZenBtn;
+  const cluster = document.getElementById('zenControlCluster');
+  const exitBtn = document.getElementById('exitZenBtn');
+  const typeBtn = document.getElementById('zenTypeBtn');
   const toggleBtn = el.zenModeBtn;
 
+  /** Find the top-level paragraph closest to the focus line.
+   *  Flow layout means block centers are monotonically increasing — once the
+   *  distance starts growing again we can stop early (O(viewport), not O(doc). */
   function updateActiveParagraph() {
     if (!isZenMode || !content) return;
     const children = Array.from(content.children);
     if (!children.length) return;
 
     const targetCenter = window.innerHeight * 0.38;
+    const viewportBottom = window.innerHeight + 50;
     let closestEl = null;
     let minDistance = Infinity;
 
-    children.forEach((child) => {
+    for (const child of children) {
       const rect = child.getBoundingClientRect();
+      if (rect.bottom < -50) continue;              // above the viewport — can't win
+      if (rect.top > viewportBottom) break;          // below the viewport — done scanning
       const childCenter = rect.top + rect.height / 2;
       const dist = Math.abs(childCenter - targetCenter);
       if (dist < minDistance) {
         minDistance = dist;
         closestEl = child;
+      } else if (childCenter > targetCenter) {
+        break; // centers only increase from here — distances can only grow
       }
-    });
+    }
 
     children.forEach((child) => {
       if (child === closestEl) {
@@ -6569,21 +7027,47 @@ if ('serviceWorker' in navigator) {
         child.classList.remove('zen-active-paragraph');
       }
     });
+
+    // Typewriter mode: when the settled active paragraph changes, gently center it
+    if (typewriterEnabled && closestEl && closestEl !== lastActiveEl) {
+      const elToCenter = closestEl;
+      clearTimeout(typeTimer);
+      typeTimer = setTimeout(() => {
+        if (elToCenter.classList.contains('zen-active-paragraph')) {
+          elToCenter.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+      }, 450);
+    }
+    lastActiveEl = closestEl;
   }
 
   function setZenMode(enable) {
+    if (enable && !state.activeKey) {
+      quickToast("🧘 Open a document first — Zen Mode focuses on your reading.");
+      return;
+    }
     isZenMode = enable;
     if (isZenMode) {
       document.body.classList.add('zen-mode');
-      if (exitBtn) exitBtn.style.display = 'flex';
+      if (cluster) cluster.style.display = 'flex';
+      refreshTypeBtn();
+      lastActiveEl = null;
       updateActiveParagraph();
+      quickToast("🧘 Zen Mode on — focus reading. ESC to exit.");
     } else {
       document.body.classList.remove('zen-mode');
-      if (exitBtn) exitBtn.style.display = 'none';
+      if (cluster) cluster.style.display = 'none';
+      clearTimeout(typeTimer);
       if (content) {
         Array.from(content.children).forEach(child => child.classList.remove('zen-active-paragraph'));
       }
     }
+  }
+
+  function refreshTypeBtn() {
+    if (!typeBtn) return;
+    typeBtn.classList.toggle('active', typewriterEnabled);
+    typeBtn.setAttribute('aria-pressed', typewriterEnabled ? 'true' : 'false');
   }
 
   if (toggleBtn) {
@@ -6594,10 +7078,31 @@ if ('serviceWorker' in navigator) {
     exitBtn.addEventListener('click', () => setZenMode(false));
   }
 
+  if (typeBtn) {
+    typeBtn.addEventListener('click', () => {
+      typewriterEnabled = !typewriterEnabled;
+      localStorage.setItem("md-reader-zen-typewriter", typewriterEnabled ? "1" : "0");
+      refreshTypeBtn();
+      quickToast(typewriterEnabled ? "⌨️ Typewriter auto-center ON" : "⌨️ Typewriter auto-center OFF");
+      if (typewriterEnabled) updateActiveParagraph();
+    });
+    refreshTypeBtn();
+  }
+
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape' && isZenMode) {
       setZenMode(false);
     }
+  });
+
+  // Zen's screen-only layout rules would clip print — exit automatically before printing
+  window.addEventListener('beforeprint', () => {
+    if (isZenMode) setZenMode(false);
+  });
+
+  // Auto-exit when the document closes (otherwise the dashboard has no navigation back)
+  window.addEventListener('md-reader:doc-closed', () => {
+    if (isZenMode) setZenMode(false);
   });
 
   if (readerContainer) {
@@ -6608,6 +7113,14 @@ if ('serviceWorker' in navigator) {
       scrollTimeout = requestAnimationFrame(updateActiveParagraph);
     });
   }
+
+  // Test/tuning hooks
+  window.__zen = {
+    set: setZenMode,
+    update: updateActiveParagraph,
+    isOn: () => isZenMode,
+    typewrite: (v) => { typewriterEnabled = !!v; refreshTypeBtn(); }
+  };
 })();
 
 /* ---------- ⛶ Full Screen Reading Mode ---------- */

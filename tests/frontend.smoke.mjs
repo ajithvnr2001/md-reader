@@ -32,6 +32,8 @@ window.speechSynthesis = { getVoices: () => [], speak: () => {}, cancel: () => {
 /* ---- fetch stub: in-memory bucket ---- */
 // jsdom has no fetch — inject Node's native fetch classes
 window.Response = Response;
+window.CSS = window.CSS || {};
+window.CSS.escape = window.CSS.escape || ((s) => String(s).replace(/([\[\]"\\.])/g, "\\$1"));
 window.Headers = Headers;
 window.Request = Request;
 

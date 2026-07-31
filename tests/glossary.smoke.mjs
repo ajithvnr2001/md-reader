@@ -22,6 +22,8 @@ window.Element.prototype.scrollIntoView = () => {};
 window.SpeechSynthesisUtterance = class { constructor(t) { this.text = t; } };
 window.speechSynthesis = { cancel: () => {}, speak: () => {}, getVoices: () => [], speaking: false };
 window.Response = Response;
+window.CSS = window.CSS || {};
+window.CSS.escape = window.CSS.escape || ((s) => String(s).replace(/([\[\]"\\.])/g, "\\$1"));
 window.confirm = () => true;
 window.__csvDownloads = [];
 window.URL.createObjectURL = (blob) => { window.__csvDownloads.push(blob); return "blob:stub"; };

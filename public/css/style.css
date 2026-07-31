@@ -1846,6 +1846,15 @@ body {
     overflow: visible !important;
   }
 
+  /* The app shell is clamped to 100dvh + overflow:hidden on screen —
+     it MUST expand for print or only the first page renders */
+  html, body, #app {
+    height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
+  }
+  #app { display: block !important; }
+
   /* Hide ALL app chrome (never hide body itself!) */
   .topbar, .sidebar, .sidebar-overlay, .sidebar-resize-handle,
   .ai-toolbar, .ai-panel, .ai-panel-resize-handle,

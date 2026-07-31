@@ -35,6 +35,11 @@ check("CSS: reader pane is expanded for print flow", () => {
   return /@media\s+print[\s\S]*?main\.reader[\s\S]*?overflow:\s*visible\s*!important/i.test(css);
 });
 
+check("CSS REGRESSION: app-shell 100dvh/overflow clip is overridden for print (multi-page bug)", () => {
+  return /@media\s+print[\s\S]*?html,\s*body,\s*#app[\s\S]*?height:\s*auto\s*!important/i.test(css)
+      && /@media\s+print[\s\S]*?#app\s*\{[^}]*display:\s*block\s*!important/i.test(css);
+});
+
 check("CSS: modal-overlays hidden in normal print", () => {
   return /@media\s+print\s*\{(?:[\s\S]*?)\.modal-overlay\s*\{[^}]*display:\s*none\s*!important/i.test(css.split("/* ---------- Gamification")[0]);
 });

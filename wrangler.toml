@@ -13,12 +13,6 @@ binding = "MD_BUCKET"
 bucket_name = "my-md-docs"
 
 # ---------------------------------------------------------
-# Workers AI binding (no separate resource needed)
-# ---------------------------------------------------------
-[ai]
-binding = "AI"
-
-# ---------------------------------------------------------
 # Bundle static frontend files (html/css/js) as raw text
 # so index.js can `import` and serve them directly.
 # ---------------------------------------------------------
@@ -27,9 +21,12 @@ type = "Text"
 globs = ["public/**/*.txt"]
 fallthrough = true
 
+# ---------------------------------------------------------
+# Secrets (set via `npx wrangler secret put <NAME>` — NEVER commit keys):
+#   GEMINI_API_KEY      - required for all Gemini 3.5 features + TTS podcasts
+#   INCEPTION_API_KEY   - required for Mercury 2 model
+#   UPLOAD_SECRET       - required when REQUIRE_AUTH = "true"
+# ---------------------------------------------------------
 [vars]
-# Model used for all AI features — change to any Workers AI text model
-AI_MODEL = "gemini-3.5-flash-lite"
-INCEPTION_API_KEY = "***REMOVED-INCEPTION-KEY***"
-# Set to "true" to require the X-Auth-Key header on write endpoints
+# Set to "true" to require the X-Auth-Key header on write/cache endpoints
 REQUIRE_AUTH = "false"

@@ -5,10 +5,10 @@
 /* ---------------- State ---------------- */
 const state = {
   files: [], // Array of { key, size, uploaded }
+  folders: [], // Array of folder paths (from /api/list, incl. empty folders)
   activeKey: localStorage.getItem("md-reader-active-key"),
   fontScale: 1,
   theme: localStorage.getItem("md-reader-theme") || "night",
-  uploadFiles: [], // Files queued for upload
   pinnedKeys: JSON.parse(localStorage.getItem("md-reader-pins") || "[]"),
   contextMenuTarget: null, // The key of the file right-clicked
   actionTarget: null, // Key of the file currently being acted upon (rename/move/delete)
@@ -27,15 +27,63 @@ const state = {
   selectedModel: localStorage.getItem("md-reader-ai-model") || "gemini-3.5-flash-lite",
 };
 
+/* ---------------- Security & network helpers ---------------- */
+/** Escape a string for safe insertion into HTML (text or double-quoted attribute). */
+function escapeHtml(str) {
+  return String(str ?? "").replace(/[&<>"']/g, (c) => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+  }[c]));
+}
+
+/** Escape a value so it can be embedded as a JS string literal inside an HTML event-handler attribute. */
+function jsStringArg(str) {
+  return escapeHtml(JSON.stringify(String(str ?? "")));
+}
+
+/** Parse markdown and sanitize the resulting HTML before it touches the DOM. */
+function renderMd(markdownText) {
+  const raw = marked.parse(markdownText || "");
+  return window.DOMPurify ? DOMPurify.sanitize(raw) : raw;
+}
+
+/**
+ * fetch() wrapper that attaches the X-Auth-Key header (when the user has one stored)
+ * and prompts for it once if the server answers 401.
+ */
+async function authFetch(url, options = {}, _retried = false) {
+  const storedKey = localStorage.getItem("md-reader-auth-key");
+  const headers = { ...(options.headers || {}) };
+  if (storedKey) headers["X-Auth-Key"] = storedKey;
+
+  const res = await fetch(url, { ...options, headers });
+  if (res.status === 401 && !_retried) {
+    const entered = prompt("This workspace is protected. Please enter the auth key:");
+    if (entered) {
+      localStorage.setItem("md-reader-auth-key", entered);
+      return authFetch(url, options, true);
+    }
+  }
+  if (res.status === 401 && _retried) {
+    localStorage.removeItem("md-reader-auth-key");
+    alert("The auth key was rejected. It has been cleared — try again.");
+  }
+  return res;
+}
+
+/* ---------------- AI cache (local + debounced remote sync) ---------------- */
+let aiCacheSyncTimer = null;
 function saveAiCache() {
   localStorage.setItem("md-reader-ai-cache", JSON.stringify(state.aiCache));
-  
-  // Background remote save to sync across all devices
-  fetch("/api/ai/cache", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(state.aiCache)
-  }).catch((err) => console.error("Failed to sync AI cache remotely:", err));
+
+  // Debounced background remote save to sync across devices (avoids an R2 write per keystroke)
+  clearTimeout(aiCacheSyncTimer);
+  aiCacheSyncTimer = setTimeout(() => {
+    authFetch("/api/ai/cache", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(state.aiCache)
+    }).catch((err) => console.error("Failed to sync AI cache remotely:", err));
+  }, 1500);
 }
 
 /* ---------------- DOM refs ---------------- */
@@ -78,19 +126,60 @@ const el = {
   fsExitBtn: document.getElementById("fsExitBtn"),
   sidebarExpandBtn: document.getElementById("sidebarExpandBtn"),
   sidebarResizeHandle: document.getElementById("sidebarResizeHandle"),
+
+  // Trash & Quick Capture refs
+  trashBtn: document.getElementById("trashBtn"),
+  trashModal: document.getElementById("trashModal"),
+  trashModalClose: document.getElementById("trashModalClose"),
+  trashList: document.getElementById("trashList"),
+  trashEmptyBtn: document.getElementById("trashEmptyBtn"),
+  trashFooterStatus: document.getElementById("trashFooterStatus"),
+  quickCaptureBtn: document.getElementById("quickCaptureBtn"),
+  quickCaptureModal: document.getElementById("quickCaptureModal"),
+  quickCaptureModalClose: document.getElementById("quickCaptureModalClose"),
+  quickCaptureInput: document.getElementById("quickCaptureInput"),
+  quickCaptureSubmitBtn: document.getElementById("quickCaptureSubmitBtn"),
+  quickCaptureStatus: document.getElementById("quickCaptureStatus"),
+  quickCaptureTarget: document.getElementById("quickCaptureTarget"),
+
+  // Glossary Hub refs
+  glossaryHubBtn: document.getElementById("glossaryHubBtn"),
+  glossaryHubModal: document.getElementById("glossaryHubModal"),
+  glossaryHubModalClose: document.getElementById("glossaryHubModalClose"),
+  glossaryHubSearch: document.getElementById("glossaryHubSearch"),
+  glossaryHubList: document.getElementById("glossaryHubList"),
+  glossaryHubStats: document.getElementById("glossaryHubStats"),
   
-  // Upload modal refs
+  // Library Manager refs
   uploadToggleBtn: document.getElementById("uploadToggleBtn"),
-  uploadModal: document.getElementById("uploadModal"),
-  uploadModalClose: document.getElementById("uploadModalClose"),
-  uploadFolderSelect: document.getElementById("uploadFolderSelect"),
-  toggleNewFolder: document.getElementById("toggleNewFolder"),
-  newFolderInputWrap: document.getElementById("newFolderInputWrap"),
-  uploadFolderNew: document.getElementById("uploadFolderNew"),
-  dropZone: document.getElementById("dropZone"),
-  fileInput: document.getElementById("fileInput"),
-  uploadQueue: document.getElementById("uploadQueue"),
-  uploadSubmitBtn: document.getElementById("uploadSubmitBtn"),
+  libraryModal: document.getElementById("libraryModal"),
+  libraryModalClose: document.getElementById("libraryModalClose"),
+  libTabUpload: document.getElementById("libTabUpload"),
+  libTabNote: document.getElementById("libTabNote"),
+  libTabFolder: document.getElementById("libTabFolder"),
+  libUploadFolderInput: document.getElementById("libUploadFolderInput"),
+  libUploadFolderList: document.getElementById("libUploadFolderList"),
+  libDropZone: document.getElementById("libDropZone"),
+  libFileInput: document.getElementById("libFileInput"),
+  libFolderInput: document.getElementById("libFolderInput"),
+  libUploadQueue: document.getElementById("libUploadQueue"),
+  libConflictBar: document.getElementById("libConflictBar"),
+  libConflictText: document.getElementById("libConflictText"),
+  libConflictSkipBtn: document.getElementById("libConflictSkipBtn"),
+  libConflictOverwriteBtn: document.getElementById("libConflictOverwriteBtn"),
+  libNoteNameInput: document.getElementById("libNoteNameInput"),
+  libNoteNameHint: document.getElementById("libNoteNameHint"),
+  libNoteFolderInput: document.getElementById("libNoteFolderInput"),
+  libNoteFolderList: document.getElementById("libNoteFolderList"),
+  libNoteTemplateSelect: document.getElementById("libNoteTemplateSelect"),
+  libNoteContentInput: document.getElementById("libNoteContentInput"),
+  libNotePreview: document.getElementById("libNotePreview"),
+  libFolderParentInput: document.getElementById("libFolderParentInput"),
+  libFolderParentList: document.getElementById("libFolderParentList"),
+  libFolderNameInput: document.getElementById("libFolderNameInput"),
+  libFolderNameHint: document.getElementById("libFolderNameHint"),
+  libFooterStatus: document.getElementById("libFooterStatus"),
+  libSubmitBtn: document.getElementById("libSubmitBtn"),
 
   // Context Menu & File Management refs
   contextMenu: document.getElementById("contextMenu"),
@@ -115,13 +204,16 @@ const el = {
   deleteCancelBtn: document.getElementById("deleteCancelBtn"),
   deleteSubmitBtn: document.getElementById("deleteSubmitBtn"),
 
-  // Folder Delete refs
+  // Folder management refs
   deleteFolderModal: document.getElementById("deleteFolderModal"),
   deleteFolderModalClose: document.getElementById("deleteFolderModalClose"),
   deleteFolderNameText: document.getElementById("deleteFolderNameText"),
   deleteFolderCancelBtn: document.getElementById("deleteFolderCancelBtn"),
   deleteFolderSubmitBtn: document.getElementById("deleteFolderSubmitBtn"),
   cmDeleteFolderBtn: document.getElementById("cmDeleteFolderBtn"),
+  cmNewNoteHereBtn: document.getElementById("cmNewNoteHereBtn"),
+  cmNewFolderHereBtn: document.getElementById("cmNewFolderHereBtn"),
+  cmRenameFolderBtn: document.getElementById("cmRenameFolderBtn"),
 
   // Download refs
   cmDownloadBtn: document.getElementById("cmDownloadBtn"),
@@ -136,17 +228,8 @@ const el = {
   emptyStateChatBtn: document.getElementById("emptyStateChatBtn"),
   clearChatBtn: document.getElementById("clearChatBtn"),
 
-  // Create File refs
+  // Create File ref (opens the Library Manager on the New Note tab)
   createFileToggleBtn: document.getElementById("createFileToggleBtn"),
-  createFileModal: document.getElementById("createFileModal"),
-  createFileModalClose: document.getElementById("createFileModalClose"),
-  createFileFolderSelect: document.getElementById("createFileFolderSelect"),
-  createFileToggleNewFolder: document.getElementById("createFileToggleNewFolder"),
-  createFileNewFolderInputWrap: document.getElementById("createFileNewFolderInputWrap"),
-  createFileFolderNew: document.getElementById("createFileFolderNew"),
-  createFileNameInput: document.getElementById("createFileNameInput"),
-  createFileContentInput: document.getElementById("createFileContentInput"),
-  createFileSubmitBtn: document.getElementById("createFileSubmitBtn"),
 
   // Document Search refs
   searchDocContainer: document.getElementById("searchDocContainer"),
@@ -168,8 +251,6 @@ const el = {
   exportAiBtn: document.getElementById("exportAiBtn"),
 
   // Accent, Speech rate, Editor and Stats refs
-  accentBtn: document.getElementById("accentBtn"),
-  accentPopover: document.getElementById("accentPopover"),
   speechRateSelect: document.getElementById("speechRateSelect"),
   editBtn: document.getElementById("editBtn"),
   readingStatsBar: document.getElementById("readingStatsBar"),
@@ -286,6 +367,7 @@ function resetActiveDocView() {
   hide(el.readingStatsBarSecondary);
   hide(el.editorContainer);
   show(el.emptyState);
+  if (typeof studyDashboard === "object" && studyDashboard.render) studyDashboard.render();
 }
 
 /* ---------------- Theme ---------------- */
@@ -707,6 +789,9 @@ function showContextMenu(e, key) {
   show(el.cmMoveBtn, 'flex');
   show(el.cmDeleteBtn, 'flex');
   hide(el.cmDeleteFolderBtn);
+  hide(el.cmNewNoteHereBtn);
+  hide(el.cmNewFolderHereBtn);
+  hide(el.cmRenameFolderBtn);
   
   show(el.cmDownloadBtn, 'flex');
   hide(el.cmDownloadFolderBtn);
@@ -740,6 +825,9 @@ function showFolderContextMenu(e, path) {
   hide(el.cmMoveBtn);
   hide(el.cmDeleteBtn);
   show(el.cmDeleteFolderBtn, 'flex');
+  show(el.cmNewNoteHereBtn, 'flex');
+  show(el.cmNewFolderHereBtn, 'flex');
+  show(el.cmRenameFolderBtn, 'flex');
   
   hide(el.cmDownloadBtn);
   show(el.cmDownloadFolderBtn, 'flex');
@@ -801,23 +889,27 @@ el.renameSubmitBtn.addEventListener("click", async () => {
   el.renameSubmitBtn.textContent = "Renaming...";
   
   try {
-    const res = await fetch("/api/rename", {
+    const res = await authFetch("/api/rename", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ oldKey, newName })
     });
     const data = await res.json();
     if (!res.ok || data.error) throw new Error(data.error || "Rename failed");
+    const newKey = data.newKey || oldKey;
     
     // Update local state pins if renamed
     if (state.pinnedKeys.includes(oldKey)) {
       state.pinnedKeys = state.pinnedKeys.filter(k => k !== oldKey);
-      state.pinnedKeys.push(data.newKey);
+      state.pinnedKeys.push(newKey);
       localStorage.setItem("md-reader-pins", JSON.stringify(state.pinnedKeys));
     }
     
-    // If active file was renamed, update activeKey
-    if (state.activeKey === oldKey) state.activeKey = data.newKey;
+    // If active file was renamed, update + persist activeKey
+    if (state.activeKey === oldKey) {
+      state.activeKey = newKey;
+      localStorage.setItem("md-reader-active-key", newKey);
+    }
     
     hide(el.renameModal);
     await loadFileList();
@@ -852,25 +944,26 @@ el.moveSubmitBtn.addEventListener("click", async () => {
   el.moveSubmitBtn.textContent = "Moving...";
   
   try {
-    const res = await fetch("/api/move", {
+    const res = await authFetch("/api/move", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ oldKey, newFolder })
     });
     const data = await res.json();
     if (!res.ok || data.error) throw new Error(data.error || "Move failed");
+    const newKey = data.newKey || oldKey;
     
     // Update local state pins if moved
     if (state.pinnedKeys.includes(oldKey)) {
       state.pinnedKeys = state.pinnedKeys.filter(k => k !== oldKey);
-      state.pinnedKeys.push(data.newKey);
+      state.pinnedKeys.push(newKey);
       localStorage.setItem("md-reader-pins", JSON.stringify(state.pinnedKeys));
     }
     
     // If active file was moved, update activeKey
     if (state.activeKey === oldKey) {
-      state.activeKey = data.newKey;
-      localStorage.setItem("md-reader-active-key", data.newKey);
+      state.activeKey = newKey;
+      localStorage.setItem("md-reader-active-key", newKey);
     }
     
     hide(el.moveModal);
@@ -903,7 +996,7 @@ el.deleteSubmitBtn.addEventListener("click", async () => {
   el.deleteSubmitBtn.textContent = "Deleting...";
   
   try {
-    const res = await fetch(`/api/file?key=${encodeURIComponent(key)}`, { method: "DELETE" });
+    const res = await authFetch(`/api/file?key=${encodeURIComponent(key)}`, { method: "DELETE" });
     const data = await res.json();
     if (!res.ok || data.error) throw new Error(data.error || "Delete failed");
     
@@ -948,7 +1041,7 @@ el.deleteFolderSubmitBtn.addEventListener("click", async () => {
   el.deleteFolderSubmitBtn.textContent = "Deleting...";
   
   try {
-    const res = await fetch(`/api/folder?prefix=${encodeURIComponent(prefix)}`, { method: "DELETE" });
+    const res = await authFetch(`/api/folder?prefix=${encodeURIComponent(prefix)}`, { method: "DELETE" });
     const data = await res.json();
     if (!res.ok || data.error) throw new Error(data.error || "Delete folder failed");
     
@@ -1056,6 +1149,7 @@ async function loadFileList() {
     const res = await fetch("/api/list", { cache: "no-store" });
     const data = await res.json();
     state.files = data.files || [];
+    state.folders = data.folders || [];
     // Cleanup dangling pins
     const existingKeys = state.files.map(f => f.key);
     const validPins = state.pinnedKeys.filter(k => existingKeys.includes(k));
@@ -1065,7 +1159,7 @@ async function loadFileList() {
     }
     renderFileTree(state.files);
   } catch (err) {
-    el.fileList.innerHTML = `<div class="file-list-empty">⚠️ Failed to load: ${err.message}</div>`;
+    el.fileList.innerHTML = `<div class="file-list-empty">⚠️ Failed to load: ${escapeHtml(err.message)}</div>`;
   }
 }
 
@@ -1103,16 +1197,14 @@ function renderTreeHtml(node, path = "") {
     const isSearching = el.searchInput && el.searchInput.value && el.searchInput.value.trim().length > 0;
     const collapsedClass = (isParentOfActive || isSearching) ? "" : "collapsed";
 
-    const dragOverHandlers = `ondragover="event.preventDefault(); this.classList.add('drag-over');" ondragenter="event.preventDefault(); this.classList.add('drag-over');" ondragleave="this.classList.remove('drag-over');" ondrop="handleFileDrop(event, '${fullPath}')"`;
-
     html += `
       <div class="folder-section">
-        <div class="folder-header ${collapsedClass}" data-path="${fullPath}" ${dragOverHandlers} onclick="this.classList.toggle('collapsed'); this.nextElementSibling.classList.toggle('collapsed')">
+        <div class="folder-header ${collapsedClass}" data-path="${escapeHtml(fullPath)}">
           <svg class="folder-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
-          ${fName}
+          ${escapeHtml(fName)}
           <span class="folder-count">${count}</span>
-          <button class="tree-download-btn" title="Download Folder (.zip)" onclick="event.stopPropagation(); downloadFolder('${fullPath}')">
+          <button class="tree-download-btn" data-key="${escapeHtml(fullPath)}" data-folder="1" title="Download Folder (.zip)">
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
           </button>
         </div>
@@ -1127,20 +1219,20 @@ function renderTreeHtml(node, path = "") {
   const files = node.files.sort((a, b) => a.name.localeCompare(b.name));
   for (const f of files) {
     const isActive = f.key === state.activeKey ? "active" : "";
-    const draggableAttr = state.synthesisMode ? "" : `draggable="true" ondragstart="handleFileDragStart(event, '${f.key}')"`;
+    const draggableAttr = state.synthesisMode ? "" : `draggable="true"`;
     
     let checkboxHtml = "";
     if (state.synthesisMode) {
       const checked = state.selectedKeys.has(f.key) ? "checked" : "";
-      checkboxHtml = `<input type="checkbox" class="file-select-checkbox" data-key="${f.key}" ${checked} onclick="event.stopPropagation(); handleCheckboxToggle(this, '${f.key}')" style="margin-right:8px; cursor:pointer" />`;
+      checkboxHtml = `<input type="checkbox" class="file-select-checkbox" data-key="${escapeHtml(f.key)}" ${checked} style="margin-right:8px; cursor:pointer" />`;
     }
     
     html += `
-      <div class="file-item ${isActive}" data-key="${f.key}" ${draggableAttr}>
+      <div class="file-item ${isActive}" data-key="${escapeHtml(f.key)}" ${draggableAttr}>
         ${checkboxHtml}
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
-        ${f.name.replace(/\.md$/i, '')}
-        <button class="tree-download-btn" title="Download File" onclick="event.stopPropagation(); downloadFile('${f.key}')">
+        ${escapeHtml(f.name.replace(/\.(md|markdown)$/i, ''))}
+        <button class="tree-download-btn" data-key="${escapeHtml(f.key)}" title="Download File">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
         </button>
       </div>
@@ -1173,12 +1265,12 @@ function renderFileTree(files) {
       `;
       pinnedFiles.sort((a, b) => a.key.localeCompare(b.key)).forEach(f => {
         const isActive = f.key === state.activeKey ? "active" : "";
-        const name = f.key.split('/').pop().replace(/\.md$/i, '');
+        const name = f.key.split('/').pop().replace(/\.(md|markdown)$/i, '');
         finalHtml += `
-          <div class="file-item ${isActive}" data-key="${f.key}">
+          <div class="file-item ${isActive}" data-key="${escapeHtml(f.key)}">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
-            ${name}
-            <button class="tree-download-btn" title="Download File" onclick="event.stopPropagation(); downloadFile('${f.key}')">
+            ${escapeHtml(name)}
+            <button class="tree-download-btn" data-key="${escapeHtml(f.key)}" title="Download File">
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
             </button>
           </div>
@@ -1206,6 +1298,36 @@ function renderFileTree(files) {
     });
   });
 }
+
+/* Delegated tree interactions (XSS-safe — no inline handlers) */
+el.fileList.addEventListener("click", (e) => {
+  const dlBtn = e.target.closest(".tree-download-btn");
+  if (dlBtn) {
+    e.stopPropagation();
+    if (dlBtn.dataset.folder === "1") downloadFolder(dlBtn.dataset.key);
+    else downloadFile(dlBtn.dataset.key);
+    return;
+  }
+  const checkbox = e.target.closest(".file-select-checkbox");
+  if (checkbox) {
+    e.stopPropagation();
+    handleCheckboxToggle(checkbox, checkbox.dataset.key);
+    return;
+  }
+  const folderHeader = e.target.closest(".folder-header");
+  if (folderHeader && folderHeader.nextElementSibling) {
+    folderHeader.classList.toggle("collapsed");
+    folderHeader.nextElementSibling.classList.toggle("collapsed");
+  }
+});
+
+el.fileList.addEventListener("dragstart", (e) => {
+  if (state.synthesisMode) return;
+  const item = e.target.closest(".file-item[data-key]");
+  if (!item) return;
+  e.dataTransfer.setData("text/plain", item.dataset.key);
+  e.dataTransfer.effectAllowed = "move";
+});
 
 el.searchInput.addEventListener("input", (e) => {
   const q = e.target.value.toLowerCase();
@@ -1280,7 +1402,7 @@ async function openFile(key) {
     const res = await fetch(`/api/file?key=${encodeURIComponent(key)}`, { cache: "no-store" });
     if (!res.ok) throw new Error("File not found");
     const mdText = await res.text();
-    targetContent.innerHTML = marked.parse(mdText);
+    targetContent.innerHTML = renderMd(mdText);
     
     // Clean string helper: keeps only letters & digits for robust comparison
     const cleanStr = (s) => (s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
@@ -1323,6 +1445,9 @@ async function openFile(key) {
     show(el.exportHtmlBtn, 'flex');
     show(targetStatsBar, 'flex');
     hide(el.editorContainer);
+    editMode = false;
+    el.editorLoadedOk = false;
+    el.editBtn.classList.remove("active");
     
     if (isSecondary) {
       updateReadingStatsSecondary(mdText);
@@ -1330,6 +1455,16 @@ async function openFile(key) {
       updateReadingStats(mdText);
       buildTOC();
       highlights.restoreHighlights();
+      // Re-apply cached glossary highlights automatically on open
+      const cachedGlossary = state.aiCache[key] && state.aiCache[key].glossary;
+      if (cachedGlossary && cachedGlossary.length) {
+        autoGlossary.terms = cachedGlossary.map(t => autoGlossary.normalizeTermData(t));
+        autoGlossary.applyToDOM();
+      }
+      // Track recent docs for the dashboard
+      const recents = JSON.parse(localStorage.getItem("md-reader-recent") || "[]").filter(k => k !== key);
+      recents.unshift(key);
+      localStorage.setItem("md-reader-recent", JSON.stringify(recents.slice(0, 8)));
     }
     
     const notesToggleBtn = document.getElementById('notesToggleBtn');
@@ -1343,9 +1478,24 @@ async function openFile(key) {
     hide(el.chatInputArea);
     hide(el.exportAiBtn);
     
-    document.querySelector(".reader").scrollTop = 0;
+    // Restore previous reading position (primary pane), else start at top
+    const readerEl = document.querySelector(".reader");
+    if (!isSecondary) {
+      const prog = readingProgress.get(key);
+      if (prog && prog.ratio > 0.01 && prog.ratio < 0.99) {
+        setTimeout(() => {
+          const max = readerEl.scrollHeight - readerEl.clientHeight;
+          readerEl.scrollTop = Math.round(prog.ratio * max);
+        }, 120);
+        readerEl.scrollTop = 0;
+      } else {
+        readerEl.scrollTop = 0;
+      }
+    } else {
+      readerEl.scrollTop = 0;
+    }
   } catch (err) {
-    targetContent.innerHTML = `<p style="color:var(--error)">⚠️ Could not load file: ${err.message}</p>`;
+    targetContent.innerHTML = `<p style="color:var(--error)">⚠️ Could not load file: ${escapeHtml(err.message)}</p>`;
   }
 }
 
@@ -1923,7 +2073,7 @@ async function callAi(endpoint, body, onSuccess) {
 
     if (data.error) {
       el.aiPanelContent.innerHTML = `<div style="padding:16px;background:rgba(248,81,73,0.08);border:1px solid var(--error);border-radius:var(--radius);color:var(--error)">
-        <strong>Error:</strong> ${data.error}
+        <strong>Error:</strong> ${escapeHtml(data.error)}
       </div>`;
       return;
     }
@@ -1931,7 +2081,7 @@ async function callAi(endpoint, body, onSuccess) {
   } catch (err) {
     hide(el.aiSpinner);
     el.aiPanelContent.innerHTML = `<div style="padding:16px;background:rgba(248,81,73,0.08);border:1px solid var(--error);border-radius:var(--radius);color:var(--error)">
-      <strong>Network error:</strong> ${err.message}
+      <strong>Network error:</strong> ${escapeHtml(err.message)}
     </div>`;
   }
 }
@@ -1951,13 +2101,13 @@ el.summarizeBtn.addEventListener("click", () => {
   
   openAiPanel("✨ Summary", false, 'summary');
   callAi("/api/ai/summarize", { key }, (data) => {
-    let html = marked.parse(data.summary || "No summary returned.");
+    let html = renderMd(data.summary || "No summary returned.");
     if (data.keyConcepts && data.keyConcepts.length > 0) {
       html += `
         <div class="chat-extra" style="margin-top:20px">
           <div class="chat-extra-title">Key Concepts</div>
           <div class="chat-concepts">
-            ${data.keyConcepts.map(c => `<span class="concept-badge">${c}</span>`).join("")}
+            ${data.keyConcepts.map(c => `<span class="concept-badge">${escapeHtml(c)}</span>`).join("")}
           </div>
         </div>
       `;
@@ -1984,7 +2134,7 @@ function renderChat() {
     `;
     html += `
       <div class="chat-msg ${isUser ? 'user' : 'model'}">
-        <div class="chat-bubble">${isUser ? text : marked.parse(text)}</div>
+        <div class="chat-bubble">${isUser ? escapeHtml(text) : renderMd(text)}</div>
         <div class="chat-meta">
           <span>${isUser ? 'You' : 'Tutor'}</span>
           ${modelBadge}
@@ -2015,7 +2165,7 @@ function renderChat() {
       extraHtml += `
         <div class="chat-extra-title" style="margin-top:8px">Suggested Questions</div>
         <div class="chat-suggestions">
-          ${suggestedQuestions.map(q => `<button class="suggestion-btn" onclick="sendChatPrompt('${q.replace(/'/g, "\\'")}')">${q}</button>`).join("")}
+          ${suggestedQuestions.map(q => `<button class="suggestion-btn" onclick='sendChatPrompt(${jsStringArg(q)})'>${escapeHtml(q)}</button>`).join("")}
         </div>
       `;
     }
@@ -2078,7 +2228,7 @@ async function retryChatResponse(msgIndex) {
 
     if (data.error) {
       el.aiPanelContent.innerHTML += `<div style="padding:16px;background:rgba(248,81,73,0.08);border:1px solid var(--error);border-radius:var(--radius);color:var(--error);margin-top:12px">
-        <strong>Retry Error:</strong> ${data.error}
+        <strong>Retry Error:</strong> ${escapeHtml(data.error)}
       </div>`;
       return;
     }
@@ -2098,11 +2248,17 @@ async function retryChatResponse(msgIndex) {
   } catch (e) {
     hide(el.aiSpinner);
     el.aiPanelContent.innerHTML += `<div style="padding:16px;background:rgba(248,81,73,0.08);border:1px solid var(--error);border-radius:var(--radius);color:var(--error);margin-top:12px">
-      <strong>Network error:</strong> ${e.message}
+      <strong>Network error:</strong> ${escapeHtml(e.message)}
     </div>`;
   }
 }
 window.retryChatResponse = retryChatResponse;
+
+/* Regenerate helpers for the retry button — re-trigger the feature after its cache was cleared */
+function fetchAndApplySummary() { el.summarizeBtn.click(); }
+function fetchAndApplyQuiz() { el.quizBtn.click(); }
+function fetchAndApplyFlashcards() { el.flashcardsBtn.click(); }
+function fetchAndApplyCheatSheet() { if (el.cheatSheetBtn) el.cheatSheetBtn.click(); }
 
 if (el.retryAiBtn) {
   el.retryAiBtn.addEventListener("click", () => {
@@ -2139,7 +2295,12 @@ if (el.retryAiBtn) {
         saveAiCache();
       }
       autoGlossary.fetchAndApply();
+    } else if (title.includes("Translat")) {
+      aiTranslator.openLanguagePicker();
+    } else if (title.includes("Podcast")) {
+      aiPodcast.openLanguagePicker();
     } else {
+      // Chat-type panels (Tutor, General Assistant, Synthesis, Workspace Search)
       retryChatResponse();
     }
   });
@@ -2184,7 +2345,7 @@ async function sendChatPrompt(prompt) {
     
     if (data.error) {
       el.aiPanelContent.innerHTML += `<div style="padding:16px;background:rgba(248,81,73,0.08);border:1px solid var(--error);border-radius:var(--radius);color:var(--error);margin-top:12px">
-        <strong>Error:</strong> ${data.error}
+        <strong>Error:</strong> ${escapeHtml(data.error)}
       </div>`;
       return;
     }
@@ -2205,7 +2366,7 @@ async function sendChatPrompt(prompt) {
   } catch (e) {
     hide(el.aiSpinner);
     el.aiPanelContent.innerHTML += `<div style="padding:16px;background:rgba(248,81,73,0.08);border:1px solid var(--error);border-radius:var(--radius);color:var(--error);margin-top:12px">
-      <strong>Network error:</strong> ${e.message}
+      <strong>Network error:</strong> ${escapeHtml(e.message)}
     </div>`;
   }
 }
@@ -2283,10 +2444,10 @@ function renderQuiz(quiz) {
     .map(
       (q, qi) => `
       <div class="quiz-question" data-qi="${qi}" data-answer="${q.answerIndex}">
-        <p><strong>Q${qi + 1}.</strong> ${q.question}</p>
+        <p><strong>Q${qi + 1}.</strong> ${escapeHtml(q.question)}</p>
         <ul class="quiz-options">
           ${q.options
-            .map((opt, oi) => `<li data-oi="${oi}">${opt}</li>`)
+            .map((opt, oi) => `<li data-oi="${oi}">${escapeHtml(opt)}</li>`)
             .join("")}
         </ul>
       </div>`
@@ -2336,33 +2497,47 @@ function renderFlashcards(cards) {
   
   const key = state.activeKey;
   const cache = state.aiCache[key];
-  const idx = cache.flashcardIndex || 0;
-  const card = cards[idx];
+  if (!cache.flashcardOrder || cache.flashcardOrder.length !== cards.length) {
+    cache.flashcardOrder = srsDeck.buildStudyOrder(key, cards.length);
+    cache.flashcardIndex = 0;
+  }
+  const pos = cache.flashcardIndex || 0;
+  const actualIdx = cache.flashcardOrder[pos] ?? pos;
+  const card = cards[actualIdx];
+  const sched = srsDeck.getSchedule(key, actualIdx);
+  const dueCount = srsDeck.dueIndices(key, cards.length).length;
+
+  const srsBadge = !sched || sched.reps === 0
+    ? `<span class="srs-badge new">New card</span>`
+    : (srsDeck.isDue(sched)
+      ? `<span class="srs-badge due">Due for review</span>`
+      : `<span class="srs-badge" style="color:var(--text-dim);border-color:var(--border)">Next review in ${sched.interval} day${sched.interval === 1 ? '' : 's'}</span>`);
   
   el.aiPanelContent.innerHTML = `
     <div class="flashcards-container">
+      <div style="display:flex;justify-content:center;margin-bottom:6px">${srsBadge}</div>
       <div class="flashcard-wrapper" onclick="this.querySelector('.flashcard').classList.toggle('flipped')">
         <div class="flashcard">
           <div class="flashcard-front">
             <div class="flashcard-badge">Question / Term</div>
-            <div class="flashcard-text">${card.question}</div>
+            <div class="flashcard-text">${escapeHtml(card.question)}</div>
           </div>
           <div class="flashcard-back">
             <div class="flashcard-badge">Answer / Definition</div>
-            <div class="flashcard-text">${card.answer}</div>
+            <div class="flashcard-text">${escapeHtml(card.answer)}</div>
           </div>
         </div>
       </div>
       
       <div class="flashcard-feedback-actions">
-        <button class="feedback-btn easy" onclick="rateFlashcard('easy')">Easy</button>
-        <button class="feedback-btn medium" onclick="rateFlashcard('medium')">Medium</button>
-        <button class="feedback-btn hard" onclick="rateFlashcard('hard')">Hard</button>
+        <button class="feedback-btn easy" title="Quality 5 — longer interval" onclick="rateFlashcard('easy')">Easy</button>
+        <button class="feedback-btn medium" title="Quality 4 — standard interval" onclick="rateFlashcard('medium')">Medium</button>
+        <button class="feedback-btn hard" title="Quality 2 — see again soon" onclick="rateFlashcard('hard')">Hard</button>
       </div>
       
       <div class="flashcard-controls">
         <button class="flashcard-nav-btn" onclick="prevFlashcard()">&larr; Prev</button>
-        <span class="flashcard-progress">Card ${idx + 1} of ${cards.length}</span>
+        <span class="flashcard-progress">Card ${pos + 1} of ${cards.length} • ${dueCount} due</span>
         <button class="flashcard-nav-btn" onclick="nextFlashcard()">Next &rarr;</button>
       </div>
       
@@ -2377,7 +2552,22 @@ function renderFlashcards(cards) {
 }
 
 window.rateFlashcard = function(rating) {
-  console.log(`Card rated: ${rating}`);
+  const qMap = { easy: 5, medium: 4, hard: 2 };
+  const key = state.activeKey;
+  const cache = state.aiCache[key];
+  if (cache && cache.flashcards && cache.flashcards.length) {
+    const pos = cache.flashcardIndex || 0;
+    const actualIdx = (cache.flashcardOrder || [])[pos] ?? pos;
+    srsDeck.rate(key, actualIdx, qMap[rating] ?? 4);
+
+    // Hard → re-queue this card a few slots later so you see it again this session
+    if (rating === 'hard' && cache.flashcardOrder) {
+      const [removed] = cache.flashcardOrder.splice(pos, 1);
+      cache.flashcardOrder.splice(Math.min(cache.flashcardOrder.length, pos + 3), 0, removed);
+    }
+    saveAiCache();
+  }
+  gamification.awardXp(2, 'flashcard-review');
   window.nextFlashcard();
 };
 
@@ -2401,89 +2591,17 @@ window.nextFlashcard = function() {
   }
 };
 
-/* ---------------- Create File logic ---------------- */
-el.createFileToggleBtn.addEventListener("click", () => {
-  show(el.createFileModal, 'flex');
-  
-  // Populate dropdown with existing folders
-  const folders = getExistingFolders();
-  el.createFileFolderSelect.innerHTML = `<option value="">(Root Directory)</option>` + 
-    folders.map(f => `<option value="${f}">${f}</option>`).join("");
-    
-  // Reset fields
-  el.createFileToggleNewFolder.checked = false;
-  hide(el.createFileNewFolderInputWrap);
-  el.createFileFolderNew.value = "";
-  el.createFileFolderSelect.disabled = false;
-  el.createFileNameInput.value = "";
-  el.createFileContentInput.value = "";
-});
+/* ---------------- Library Manager: Upload / New Note / New Folder ---------------- */
+const NOTE_TEMPLATES = {
+  blank: "",
+  study: "# {title}\n\n## Key Concepts\n\n- \n\n## Summary\n\n## Questions to Review\n\n1. \n",
+  cheatsheet: "# {title} — Cheat Sheet\n\n## Key Definitions\n\n| Term | Definition |\n| --- | --- |\n|  |  |\n\n## Formulas & Syntax\n\n```\n\n```\n\n## Exam Tips\n\n- \n",
+  interview: "# {title} — Interview Prep\n\n## Q&A\n\n### Q1. \n\n**A:** \n\n## Rapid-Fire Facts\n\n- \n"
+};
 
-el.createFileToggleNewFolder.addEventListener("change", () => {
-  if (el.createFileToggleNewFolder.checked) {
-    show(el.createFileNewFolderInputWrap);
-    el.createFileFolderSelect.disabled = true;
-  } else {
-    hide(el.createFileNewFolderInputWrap);
-    el.createFileFolderSelect.disabled = false;
-  }
-});
-
-el.createFileModalClose.addEventListener("click", () => {
-  hide(el.createFileModal);
-});
-
-el.createFileSubmitBtn.addEventListener("click", async () => {
-  let fileName = el.createFileNameInput.value.trim();
-  if (!fileName) {
-    alert("Please enter a file name.");
-    return;
-  }
-  
-  // Ensure extension is .md
-  if (!fileName.toLowerCase().endsWith(".md")) {
-    fileName += ".md";
-  }
-  
-  const folder = el.createFileToggleNewFolder.checked
-    ? el.createFileFolderNew.value.trim().replace(/^\/+|\/+$/g, '')
-    : el.createFileFolderSelect.value;
-  const prefix = folder ? `${folder}/` : '';
-  const key = `${prefix}${fileName}`;
-  
-  // Check if file already exists
-  if (state.files.some(f => f.key.toLowerCase() === key.toLowerCase())) {
-    if (!confirm("A file with this name already exists. Do you want to overwrite it?")) {
-      return;
-    }
-  }
-  
-  el.createFileSubmitBtn.disabled = true;
-  el.createFileSubmitBtn.textContent = "Creating...";
-  
-  try {
-    const content = el.createFileContentInput.value;
-    const res = await fetch(`/api/upload?key=${encodeURIComponent(key)}`, {
-      method: "PUT",
-      body: content
-    });
-    
-    if (!res.ok) throw new Error("Failed to create file.");
-    
-    hide(el.createFileModal);
-    await loadFileList();
-    await openFile(key);
-  } catch (err) {
-    alert("Error creating file: " + err.message);
-  } finally {
-    el.createFileSubmitBtn.disabled = false;
-    el.createFileSubmitBtn.textContent = "Create File";
-  }
-});
-
-/* ---------------- Upload logic ---------------- */
+/** All known folder paths: from /api/list plus any prefix containing files. */
 function getExistingFolders() {
-  const folders = new Set();
+  const folders = new Set(state.folders || []);
   state.files.forEach(f => {
     const parts = f.key.split('/');
     parts.pop(); // Remove filename
@@ -2496,134 +2614,538 @@ function getExistingFolders() {
   return Array.from(folders).sort();
 }
 
-el.uploadToggleBtn.addEventListener("click", () => {
-  show(el.uploadModal, 'flex');
-  state.uploadFiles = [];
-  renderUploadQueue();
-  
-  // Populate dropdown with existing folders
-  const folders = getExistingFolders();
-  el.uploadFolderSelect.innerHTML = `<option value="">(Root Directory)</option>` + 
-    folders.map(f => `<option value="${f}">${f}</option>`).join("");
-    
-  // Reset checkbox and input states
-  el.toggleNewFolder.checked = false;
-  hide(el.newFolderInputWrap);
-  el.uploadFolderNew.value = "";
-  el.uploadFolderSelect.disabled = false;
-});
+/** Normalize a folder path typed by the user. */
+function sanitizeFolderPath(raw) {
+  return (raw || "").trim().replace(/\/{2,}/g, '/').replace(/^\/+|\/+$/g, '');
+}
 
-el.toggleNewFolder.addEventListener("change", () => {
-  if (el.toggleNewFolder.checked) {
-    show(el.newFolderInputWrap);
-    el.uploadFolderSelect.disabled = true;
-  } else {
-    hide(el.newFolderInputWrap);
-    el.uploadFolderSelect.disabled = false;
-  }
-});
+/** Validate both folder paths and note file names. Returns an error string or null. */
+function validatePathInput(value, { isFile = false } = {}) {
+  if (!value) return isFile ? "Please enter a file name." : "Please enter a folder name.";
+  if (value.includes("..")) return "Path cannot contain '..'";
+  if (/[\x00-\x1f]/.test(value)) return "Path contains invalid control characters";
+  if (/[\\:*?"<>|]/.test(value)) return 'Path cannot contain \\ : * ? " < > |';
+  if (isFile && !/\.(md|markdown)$/i.test(value)) return "File must end with .md (or .markdown)";
+  return null;
+}
 
-el.uploadModalClose.addEventListener("click", () => {
-  hide(el.uploadModal);
-});
+const libraryManager = {
+  _activeTab: "upload",
+  _queue: [],          // { id, file, relPath, status, progress, error }
+  _idCounter: 0,
+  _previewTimer: null,
 
-// Drag and drop handling
-el.dropZone.addEventListener("dragover", (e) => {
-  e.preventDefault();
-  el.dropZone.classList.add("drag-over");
-});
-el.dropZone.addEventListener("dragleave", () => {
-  el.dropZone.classList.remove("drag-over");
-});
-el.dropZone.addEventListener("drop", (e) => {
-  e.preventDefault();
-  el.dropZone.classList.remove("drag-over");
-  addFilesToQueue(e.dataTransfer.files);
-});
-el.fileInput.addEventListener("change", (e) => {
-  addFilesToQueue(e.target.files);
-  el.fileInput.value = ""; // reset
-});
+  /* ---------------- init & wiring ---------------- */
+  init() {
+    // Tab switching
+    el.libraryModal.querySelectorAll(".lib-tab").forEach(btn => {
+      btn.addEventListener("click", () => this.switchTab(btn.dataset.tab));
+    });
+    el.libraryModalClose.addEventListener("click", () => this.close());
+    el.libSubmitBtn.addEventListener("click", () => this.submit());
 
-function addFilesToQueue(fileList) {
-  for (const file of fileList) {
-    if (file.name.endsWith('.md') || file.name.endsWith('.txt') || file.name.endsWith('.markdown')) {
-      state.uploadFiles.push({ file, id: Math.random().toString(36).substr(2, 9), status: 'pending' });
+    // Searchable folder combos
+    this.bindCombo(el.libUploadFolderInput, el.libUploadFolderList);
+    this.bindCombo(el.libNoteFolderInput, el.libNoteFolderList);
+    this.bindCombo(el.libFolderParentInput, el.libFolderParentList);
+
+    // Drop zone
+    el.libDropZone.addEventListener("dragover", (e) => { e.preventDefault(); el.libDropZone.classList.add("drag-over"); });
+    el.libDropZone.addEventListener("dragleave", () => el.libDropZone.classList.remove("drag-over"));
+    el.libDropZone.addEventListener("drop", async (e) => {
+      e.preventDefault();
+      el.libDropZone.classList.remove("drag-over");
+      await this.importDataTransfer(e.dataTransfer);
+    });
+    el.libFileInput.addEventListener("change", async (e) => {
+      await this.importDataTransfer(e.target);
+      el.libFileInput.value = "";
+    });
+    el.libFolderInput.addEventListener("change", (e) => {
+      this.addFiles([...e.target.files]);
+      el.libFolderInput.value = "";
+    });
+
+    // Conflict bar actions
+    el.libConflictSkipBtn.addEventListener("click", () => this.resolveConflicts("skip"));
+    el.libConflictOverwriteBtn.addEventListener("click", () => this.resolveConflicts("overwrite"));
+
+    // New Note tab: validation, template, preview
+    el.libNoteNameInput.addEventListener("input", () => { this.validateNoteForm(); this.renderNotePreview(); });
+    el.libNoteFolderInput.addEventListener("input", () => this.validateNoteForm());
+    el.libNoteTemplateSelect.addEventListener("change", () => this.applyTemplate());
+    el.libNoteContentInput.addEventListener("input", () => this.renderNotePreview());
+    el.libNoteContentInput.addEventListener("keydown", (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === "Enter") { e.preventDefault(); this.submit(); }
+    });
+
+    // New Folder tab: validation
+    el.libFolderNameInput.addEventListener("input", () => this.validateFolderForm());
+    el.libFolderParentInput.addEventListener("input", () => this.validateFolderForm());
+    el.libFolderNameInput.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") { e.preventDefault(); this.submit(); }
+    });
+
+    // Destination changes can create/remove conflicts live
+    el.libUploadFolderInput.addEventListener("input", () => { this.refreshConflictFlags(); this.renderQueue(); });
+  },
+
+  open(tab = "upload", prefillFolder = null) {
+    show(el.libraryModal, 'flex');
+    el.libFooterStatus.textContent = "";
+    if (prefillFolder !== null && prefillFolder !== undefined) {
+      el.libUploadFolderInput.value = prefillFolder;
+      el.libNoteFolderInput.value = prefillFolder;
+      el.libFolderParentInput.value = prefillFolder;
     }
-  }
-  renderUploadQueue();
-}
+    this.switchTab(tab);
+  },
 
-function removeFileFromQueue(id) {
-  state.uploadFiles = state.uploadFiles.filter(f => f.id !== id);
-  renderUploadQueue();
-}
+  close() { hide(el.libraryModal); },
 
-function renderUploadQueue() {
-  el.uploadQueue.innerHTML = state.uploadFiles.map(f => {
-    let statusIcon = `<button class="remove-file" onclick="removeFileFromQueue('${f.id}')">×</button>`;
-    if (f.status === 'uploading') statusIcon = `<span style="color:var(--accent)">⏳</span>`;
-    if (f.status === 'done') statusIcon = `<span style="color:var(--success)">✓</span>`;
-    if (f.status === 'error') statusIcon = `<span style="color:var(--error)">!</span>`;
-    
-    return `
-      <div class="upload-queue-item ${f.status}" id="up-${f.id}">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>
-        <div class="file-name">${f.file.name}</div>
-        <div class="file-size">${(f.file.size / 1024).toFixed(1)} KB</div>
-        ${statusIcon}
-      </div>
-    `;
-  }).join("");
-  
-  el.uploadSubmitBtn.disabled = state.uploadFiles.length === 0 || state.uploadFiles.every(f => f.status !== 'pending');
-}
+  switchTab(tab) {
+    this._activeTab = tab;
+    el.libraryModal.querySelectorAll(".lib-tab").forEach(b => b.classList.toggle("active", b.dataset.tab === tab));
+    hide(el.libTabUpload); hide(el.libTabNote); hide(el.libTabFolder);
+    el.libFooterStatus.textContent = "";
 
-// Make remove function global for the inline onclick
-window.removeFileFromQueue = removeFileFromQueue;
+    if (tab === "upload") {
+      show(el.libTabUpload, 'block');
+      el.libSubmitBtn.textContent = "Upload";
+      this.refreshConflictFlags();
+      this.renderQueue();
+      el.libUploadFolderInput.focus();
+    } else if (tab === "note") {
+      show(el.libTabNote, 'block');
+      el.libSubmitBtn.textContent = "Create Note";
+      el.libSubmitBtn.style.background = "var(--success)";
+      this.validateNoteForm();
+      this.renderNotePreview();
+      el.libNoteNameInput.focus();
+    } else {
+      show(el.libTabFolder, 'block');
+      el.libSubmitBtn.textContent = "Create Folder";
+      el.libSubmitBtn.style.background = "var(--success)";
+      this.validateFolderForm();
+      el.libFolderNameInput.focus();
+    }
+    if (tab === "upload") el.libSubmitBtn.style.background = "var(--accent)";
+  },
 
-el.uploadSubmitBtn.addEventListener("click", async () => {
-  const folder = el.toggleNewFolder.checked
-    ? el.uploadFolderNew.value.trim().replace(/^\/+|\/+$/g, '')
-    : el.uploadFolderSelect.value;
-  const prefix = folder ? `${folder}/` : '';
-  
-  el.uploadSubmitBtn.disabled = true;
-  
-  let successCount = 0;
-  for (const item of state.uploadFiles) {
-    if (item.status !== 'pending') continue;
-    
-    item.status = 'uploading';
-    renderUploadQueue();
-    
+  /* ---------------- searchable folder combo ---------------- */
+  bindCombo(inputEl, listEl) {
+    const render = () => {
+      const q = inputEl.value.trim().toLowerCase();
+      const folders = getExistingFolders().filter(f => !q || f.toLowerCase().includes(q));
+      let html = `<div class="lib-combo-item" data-value="">📂 (Root Directory)</div>`;
+      html += folders.slice(0, 50).map(f => `<div class="lib-combo-item" data-value="${escapeHtml(f)}">📁 ${escapeHtml(f)}</div>`).join("");
+      listEl.innerHTML = html;
+      show(listEl, 'block');
+    };
+    inputEl.addEventListener("focus", render);
+    inputEl.addEventListener("input", render);
+    inputEl.addEventListener("blur", () => setTimeout(() => hide(listEl), 180));
+    listEl.addEventListener("click", (e) => {
+      const item = e.target.closest(".lib-combo-item");
+      if (item) { inputEl.value = item.dataset.value; hide(listEl); inputEl.dispatchEvent(new Event("input")); }
+    });
+  },
+
+  /* ---------------- upload queue ---------------- */
+  targetKeyFor(item) {
+    const dest = sanitizeFolderPath(el.libUploadFolderInput.value);
+    return (dest ? dest + "/" : "") + item.relPath;
+  },
+
+  refreshConflictFlags() {
+    const existing = new Set(state.files.map(f => f.key));
+    const seen = new Set();
+    this._queue.forEach(q => {
+      if (["pending", "conflict", "skipped", "pending-overwrite"].includes(q.status)) {
+        const key = this.targetKeyFor(q);
+        const isDupInQueue = seen.has(key);
+        seen.add(key);
+        if (isDupInQueue) q.status = "skipped";
+        else if (q.status === "skipped" && !existing.has(key)) q.status = "pending";
+        else if (existing.has(key) && q.status !== "pending-overwrite" && q.status !== "skipped") q.status = "conflict";
+        else if (!existing.has(key) && (q.status === "conflict" || q.status === "pending-overwrite" || q.status === "skipped")) q.status = "pending";
+      }
+    });
+  },
+
+  addFiles(fileList) {
+    let skipped = 0;
+    for (const file of fileList) {
+      if (!/\.(md|markdown)$/i.test(file.name)) { skipped++; continue; }
+      const relPath = (file._relPath || file.webkitRelativePath || file.name).replace(/^\/+/, "");
+      if (this._queue.some(q => q.relPath === relPath && q.file.size === file.size)) continue;
+      this._queue.push({ id: ++this._idCounter, file, relPath, status: "pending", progress: 0, error: null });
+    }
+    this.refreshConflictFlags();
+    this.renderQueue();
+    if (skipped > 0) {
+      el.libFooterStatus.textContent = `ℹ️ ${skipped} file${skipped === 1 ? '' : 's'} skipped — only .md / .markdown are supported.`;
+    }
+  },
+
+  resolveConflicts(mode) {
+    this._queue.forEach(q => {
+      if (q.status === "conflict") q.status = mode === "overwrite" ? "pending-overwrite" : "skipped";
+    });
+    this.renderQueue();
+  },
+
+  removeFromQueue(id) {
+    this._queue = this._queue.filter(q => q.id !== id);
+    this.refreshConflictFlags();
+    this.renderQueue();
+  },
+
+  renderQueue() {
+    const conflictCount = this._queue.filter(q => q.status === "conflict").length;
+    if (conflictCount > 0) {
+      show(el.libConflictBar, 'flex');
+      el.libConflictText.textContent = `⚠️ ${conflictCount} file${conflictCount === 1 ? '' : 's'} already exist${conflictCount === 1 ? 's' : ''} at the destination.`;
+    } else {
+      hide(el.libConflictBar);
+    }
+
+    el.libUploadQueue.innerHTML = this._queue.map(q => {
+      let statusHtml;
+      if (q.status === "uploading") {
+        statusHtml = `<span class="lib-progress"><span class="lib-progress-fill" style="width:${q.progress}%"></span></span>`;
+      } else if (q.status === "done") {
+        statusHtml = `<span style="color:var(--success)">✓</span>`;
+      } else if (q.status === "error") {
+        statusHtml = `<button class="remove-file lib-retry" data-retry="${q.id}" title="${escapeHtml(q.error || 'failed')} — click to retry">↻</button>`;
+      } else if (q.status === "conflict") {
+        statusHtml = `<span style="color:var(--warning,#d97706)" title="File exists at destination">⚠</span>`;
+      } else if (q.status === "skipped") {
+        statusHtml = `<span style="color:var(--text-dim)" title="Skipped">⊘</span>`;
+      } else {
+        statusHtml = `<button class="remove-file" data-remove="${q.id}">×</button>`;
+      }
+      const sub = q.status === "error" && q.error ? `<div class="lib-queue-error">${escapeHtml(q.error)}</div>` : "";
+      return `
+        <div class="upload-queue-item ${q.status}">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>
+          <div class="file-name" title="${escapeHtml(q.relPath)}">${escapeHtml(q.relPath)}${sub}</div>
+          <div class="file-size">${(q.file.size / 1024).toFixed(1)} KB</div>
+          ${statusHtml}
+        </div>
+      `;
+    }).join("");
+
+    el.libUploadQueue.querySelectorAll("[data-remove]").forEach(btn =>
+      btn.addEventListener("click", () => this.removeFromQueue(parseInt(btn.dataset.remove, 10))));
+    el.libUploadQueue.querySelectorAll("[data-retry]").forEach(btn =>
+      btn.addEventListener("click", () => {
+        const item = this._queue.find(q => q.id === parseInt(btn.dataset.retry, 10));
+        if (item) { item.status = "pending-overwrite"; item.error = null; this.renderQueue(); }
+      }));
+
+    const uploadable = this._queue.filter(q => q.status === "pending" || q.status === "pending-overwrite").length;
+    if (this._activeTab === "upload") {
+      el.libSubmitBtn.disabled = uploadable === 0;
+      el.libSubmitBtn.textContent = uploadable > 0 ? `Upload ${uploadable} file${uploadable === 1 ? '' : 's'}` : "Upload";
+    }
+  },
+
+  uploadOne(item) {
+    const key = this.targetKeyFor(item);
+    const overwrite = item.status === "pending-overwrite";
+    return new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open("PUT", `/api/upload?key=${encodeURIComponent(key)}&overwrite=${overwrite ? "true" : "false"}`);
+      const authKey = localStorage.getItem("md-reader-auth-key");
+      if (authKey) xhr.setRequestHeader("X-Auth-Key", authKey);
+      xhr.upload.onprogress = (e) => {
+        if (e.lengthComputable) {
+          item.progress = Math.round((e.loaded / e.total) * 100);
+          this.renderQueue();
+        }
+      };
+      xhr.onload = () => {
+        if (xhr.status >= 200 && xhr.status < 300) resolve(key);
+        else if (xhr.status === 401) { localStorage.removeItem("md-reader-auth-key"); reject(new Error("Unauthorized (401) — auth key rejected or required")); }
+        else if (xhr.status === 409) reject(new Error("Already exists (409)"));
+        else reject(new Error(`HTTP ${xhr.status}: ${xhr.responseText.slice(0, 120)}`));
+      };
+      xhr.onerror = () => reject(new Error("Network error"));
+      xhr.send(item.file);
+    });
+  },
+
+  /* ---------------- drag & drop recursion (folders) ---------------- */
+  async importDataTransfer(source) {
+    let files = [];
+    const items = source.items && source.items.length ? source.items : null;
+    const canRecurse = items && [...items].some(i => i.webkitGetAsEntry && i.webkitGetAsEntry());
+    if (canRecurse) {
+      files = await this.collectDroppedFiles(items);
+    } else {
+      files = [...(source.files || [])].map(f => { f._relPath = f.webkitRelativePath || f.name; return f; });
+    }
+    this.addFiles(files);
+    this.switchTab("upload");
+  },
+
+  /** Recursively walk dropped FileSystemEntry trees, keeping relative paths. */
+  async collectDroppedFiles(items) {
+    const out = [];
+    const readEntry = (entry, prefix) => new Promise((resolve) => {
+      if (entry.isFile) {
+        entry.file((f) => {
+          if (/\.(md|markdown)$/i.test(f.name)) {
+            f._relPath = prefix + f.name;
+            out.push(f);
+          }
+          resolve();
+        }, resolve);
+      } else if (entry.isDirectory) {
+        const reader = entry.createReader();
+        const readBatch = () => reader.readEntries(async (entries) => {
+          if (!entries.length) return resolve();
+          await Promise.all(entries.map(e => readEntry(e, `${prefix}${entry.name}/`)));
+          readBatch(); // readEntries returns max 100 items per call
+        }, resolve);
+        readBatch();
+      } else resolve();
+    });
+    const entries = [...items].map(i => i.webkitGetAsEntry && i.webkitGetAsEntry()).filter(Boolean);
+    await Promise.all(entries.map(e => readEntry(e, "")));
+    return out;
+  },
+
+  /* ---------------- New Note tab ---------------- */
+  noteTitleFromName() {
+    return (el.libNoteNameInput.value.trim().replace(/\.(md|markdown)$/i, '') || "Untitled").replace(/[-_]+/g, ' ');
+  },
+
+  validateNoteForm() {
+    let name = el.libNoteNameInput.value.trim();
+    const folder = sanitizeFolderPath(el.libNoteFolderInput.value);
+    let msg = "";
+    let ok = true;
+
+    if (!name) { ok = false; }
+    else {
+      if (!/\.(md|markdown)$/i.test(name)) name += ".md";
+      const err = validatePathInput(name, { isFile: true });
+      if (err) { ok = false; msg = err; }
+      else if (folder && (validatePathInput(folder) || folder.includes(".."))) { ok = false; msg = "Invalid folder path"; }
+      else {
+        const key = (folder ? folder + "/" : "") + name;
+        if (state.files.some(f => f.key === key)) { ok = false; msg = `⚠️ "${key}" already exists — pick another name`; }
+      }
+    }
+
+    el.libNoteNameHint.textContent = msg;
+    el.libNoteNameHint.style.color = msg ? "var(--error)" : "var(--text-dim)";
+    if (this._activeTab === "note") el.libSubmitBtn.disabled = !ok;
+    return { ok, name };
+  },
+
+  applyTemplate() {
+    const tpl = NOTE_TEMPLATES[el.libNoteTemplateSelect.value] || "";
+    el.libNoteContentInput.value = tpl.replaceAll("{title}", this.noteTitleFromName());
+    this.renderNotePreview();
+  },
+
+  renderNotePreview() {
+    clearTimeout(this._previewTimer);
+    this._previewTimer = setTimeout(() => {
+      el.libNotePreview.innerHTML = renderMd(el.libNoteContentInput.value || "*Preview will appear here…*");
+    }, 180);
+  },
+
+  async submitNote() {
+    const { ok, name } = this.validateNoteForm();
+    if (!ok) return;
+    const folder = sanitizeFolderPath(el.libNoteFolderInput.value);
+    const key = (folder ? folder + "/" : "") + name;
+
+    el.libSubmitBtn.disabled = true;
+    el.libFooterStatus.textContent = "Creating note…";
     try {
-      const key = `${prefix}${item.file.name}`;
-      // In a real app we'd need auth headers if REQUIRE_AUTH=true, but we default to false.
-      const res = await fetch(`/api/upload?key=${encodeURIComponent(key)}`, {
+      const res = await authFetch(`/api/upload?key=${encodeURIComponent(key)}`, {
         method: "PUT",
-        body: item.file
+        body: el.libNoteContentInput.value || NOTE_TEMPLATES.blank
       });
-      if (!res.ok) throw new Error("Upload failed");
-      item.status = 'done';
-      successCount++;
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.error || `HTTP ${res.status}`);
+      }
+      el.libFooterStatus.textContent = "✅ Note created.";
+      await loadFileList();
+      this.close();
+      await openFile(key);
     } catch (err) {
-      item.status = 'error';
+      el.libFooterStatus.textContent = "❌ " + err.message;
+    } finally {
+      el.libSubmitBtn.disabled = false;
     }
-    renderUploadQueue();
-  }
-  
-  if (successCount > 0) {
-    // Refresh the list immediately after upload
-    await loadFileList();
-    setTimeout(() => {
-      hide(el.uploadModal);
-    }, 1500);
-  } else {
-    el.uploadSubmitBtn.disabled = false;
-  }
-});
+  },
 
+  /* ---------------- New Folder tab ---------------- */
+  validateFolderForm() {
+    const parent = sanitizeFolderPath(el.libFolderParentInput.value);
+    const name = sanitizeFolderPath(el.libFolderNameInput.value);
+    let msg = "";
+    let ok = true;
+
+    if (!name) { ok = false; }
+    else {
+      const err = validatePathInput(name);
+      if (err) { ok = false; msg = err; }
+      else if (parent && validatePathInput(parent)) { ok = false; msg = "Invalid parent folder path"; }
+      else {
+        const fullPath = parent ? `${parent}/${name}` : name;
+        if ((state.folders || []).includes(fullPath)) { ok = false; msg = `⚠️ Folder "${fullPath}" already exists`; }
+      }
+    }
+
+    el.libFolderNameHint.textContent = msg;
+    el.libFolderNameHint.style.color = msg ? "var(--error)" : "var(--text-dim)";
+    if (this._activeTab === "folder") el.libSubmitBtn.disabled = !ok;
+    return { ok, fullPath: name ? (parent ? `${parent}/${name}` : name) : null };
+  },
+
+  async submitFolder() {
+    const { ok, fullPath } = this.validateFolderForm();
+    if (!ok || !fullPath) return;
+    el.libSubmitBtn.disabled = true;
+    el.libFooterStatus.textContent = "Creating folder…";
+    try {
+      const res = await authFetch("/api/folder", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ path: fullPath })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || data.error) throw new Error(data.error || `HTTP ${res.status}`);
+      await loadFileList();
+      el.libFooterStatus.textContent = `✅ Folder "${fullPath}" ready.`;
+      hide(el.libraryModal);
+    } catch (err) {
+      el.libFooterStatus.textContent = "❌ " + err.message;
+    } finally {
+      el.libSubmitBtn.disabled = false;
+    }
+  },
+
+  /* ---------------- submit dispatcher ---------------- */
+  async submit() {
+    if (this._activeTab === "note") return this.submitNote();
+    if (this._activeTab === "folder") return this.submitFolder();
+
+    // Upload tab
+    const uploadable = this._queue.filter(q => q.status === "pending" || q.status === "pending-overwrite");
+    if (uploadable.length === 0) return;
+
+    el.libSubmitBtn.disabled = true;
+    let done = 0, failed = 0, skipped = this._queue.filter(q => q.status === "skipped").length;
+    let firstDoneKey = null;
+
+    for (const item of uploadable) {
+      item.status = "uploading";
+      item.progress = 0;
+      this.renderQueue();
+      try {
+        const key = await this.uploadOne(item);
+        item.status = "done";
+        if (!firstDoneKey) firstDoneKey = key;
+        done++;
+      } catch (err) {
+        item.status = "error";
+        item.error = err.message;
+        failed++;
+      }
+      this.renderQueue();
+    }
+
+    el.libSubmitBtn.disabled = false;
+    el.libFooterStatus.textContent = `${done ? `✅ ${done} uploaded` : ''}${failed ? ` · ❌ ${failed} failed` : ''}${skipped ? ` · ⊘ ${skipped} skipped` : ''}`.trim();
+
+    if (done > 0) {
+      await loadFileList();
+      // Auto-open the first successfully uploaded document
+      if (firstDoneKey) {
+        this.close();
+        await openFile(firstDoneKey);
+      }
+    }
+  }
+};
+
+el.uploadToggleBtn.addEventListener("click", () => libraryManager.open("upload"));
+el.createFileToggleBtn.addEventListener("click", () => libraryManager.open("note"));
+libraryManager.init();
+
+/* ---------------- Folder actions (context menu) ---------------- */
+async function renameFolderInteractive(oldPath) {
+  const newPathRaw = prompt(`Rename folder "${oldPath}" — enter the new folder path:`, oldPath);
+  if (newPathRaw === null) return;
+  const newPath = sanitizeFolderPath(newPathRaw);
+  if (!newPath || newPath === oldPath) return;
+  const err = validatePathInput(newPath);
+  if (err) { alert(err); return; }
+
+  try {
+    const res = await authFetch("/api/folder/rename", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ oldPrefix: oldPath, newPrefix: newPath })
+    });
+    const data = await res.json();
+    if (!res.ok || data.error) throw new Error(data.error || "Rename folder failed");
+
+    // Migrate pins, active keys and AI cache entries that lived under the old prefix
+    const swapPrefix = (k) => k.startsWith(oldPath + '/') ? `${data.newPrefix}/${k.slice(oldPath.length + 1)}` : k;
+    const oldP = oldPath + '/';
+    if (state.pinnedKeys.some(k => k.startsWith(oldP))) {
+      state.pinnedKeys = state.pinnedKeys.map(k => k.startsWith(oldP) ? `${data.newPrefix}/${k.slice(oldP)}` : k);
+      localStorage.setItem("md-reader-pins", JSON.stringify(state.pinnedKeys));
+    }
+    if (state.activeKey && state.activeKey.startsWith(oldP)) {
+      state.activeKey = `${data.newPrefix}/${state.activeKey.slice(oldP)}`;
+      localStorage.setItem("md-reader-active-key", state.activeKey);
+    }
+    if (state.secondaryKey && state.secondaryKey.startsWith(oldP)) {
+      state.secondaryKey = `${data.newPrefix}/${state.secondaryKey.slice(oldP)}`;
+    }
+    Object.keys(state.aiCache).forEach(k => {
+      if (k.startsWith(oldP)) {
+        state.aiCache[`${data.newPrefix}/${k.slice(oldP)}`] = state.aiCache[k];
+        delete state.aiCache[k];
+      }
+    });
+    saveAiCache();
+
+    await loadFileList();
+    if (state.activeKey && state.activeKey.startsWith(data.newPrefix + '/')) {
+      await openFile(state.activeKey);
+    }
+  } catch (err) {
+    alert("Rename folder failed: " + err.message);
+  }
+}
+
+el.cmNewNoteHereBtn.addEventListener("click", () => {
+  if (!state.contextMenuTarget) return;
+  libraryManager.open("note", state.contextMenuTarget);
+  hideContextMenu();
+});
+el.cmNewFolderHereBtn.addEventListener("click", () => {
+  if (!state.contextMenuTarget) return;
+  libraryManager.open("folder", state.contextMenuTarget);
+  hideContextMenu();
+});
+el.cmRenameFolderBtn.addEventListener("click", () => {
+  if (!state.contextMenuTarget) return;
+  renameFolderInteractive(state.contextMenuTarget);
+  hideContextMenu();
+});
 /* ---------------- General Chatbot ---------------- */
 function openGeneralChat() {
   state.isGeneralChatActive = true;
@@ -2719,14 +3241,9 @@ let editMode = false;
 let autoSaveTimeout = null;
 
 async function fetchRawMarkdown(key) {
-  try {
-    const res = await fetch(`/api/file?key=${encodeURIComponent(key)}`);
-    if (!res.ok) throw new Error("File not found");
-    return await res.text();
-  } catch (err) {
-    console.error("Error fetching raw markdown:", err);
-    return "";
-  }
+  const res = await fetch(`/api/file?key=${encodeURIComponent(key)}`);
+  if (!res.ok) throw new Error(`Could not load the document from storage (HTTP ${res.status})`);
+  return await res.text();
 }
 
 async function toggleEditMode(editing) {
@@ -2741,32 +3258,48 @@ async function toggleEditMode(editing) {
 
   editMode = editing;
   if (editing) {
-    // Hide content rendering & toolbars
-    hide(el.content);
-    hide(el.aiToolbar);
-    hide(el.searchDocToggleBtn);
-    hide(el.searchDocContainer);
-    
     // Stop TTS if speaking
     if (window.speechSynthesis) {
       window.speechSynthesis.cancel();
       el.readAloudBtn.classList.remove("active");
     }
     
-    // Show editor
+    // Load the raw markdown FIRST — never enter edit mode with a failed/empty load,
+    // otherwise clicking Done would overwrite the stored file with empty content.
     show(el.editorContainer, 'flex');
+    hide(el.content);
+    hide(el.aiToolbar);
+    hide(el.searchDocToggleBtn);
+    hide(el.searchDocContainer);
     el.editBtn.classList.add("active");
     el.saveStatus.textContent = "Loading raw text...";
     el.editorTextarea.disabled = true;
+    el.editorLoadedOk = false;
     
-    const rawMd = await fetchRawMarkdown(state.activeKey);
-    el.editorTextarea.value = rawMd;
-    el.editorTextarea.disabled = false;
-    el.saveStatus.textContent = "Ready to edit";
-    el.editorTextarea.focus();
+    try {
+      const rawMd = await fetchRawMarkdown(state.activeKey);
+      el.editorTextarea.value = rawMd;
+      el.editorLoadedOk = true;
+      el.editorTextarea.disabled = false;
+      el.saveStatus.textContent = "Ready to edit";
+      el.editorTextarea.focus();
+    } catch (err) {
+      // Abort editing cleanly — keep the reader view, keep R2 content untouched
+      hide(el.editorContainer);
+      show(el.content);
+      show(el.aiToolbar, 'flex');
+      show(el.searchDocToggleBtn, 'flex');
+      el.editBtn.classList.remove("active");
+      editMode = false;
+      alert("Unable to open the editor: " + err.message);
+    }
   } else {
-    // Save current editor text to R2 on Done click just to be safe
-    await saveDocumentContent(false);
+    // Save current editor text to R2 on Done click — but only if it loaded successfully
+    if (el.editorLoadedOk) {
+      await saveDocumentContent(false);
+    } else {
+      el.saveStatus.textContent = "Save skipped — document was never loaded correctly";
+    }
     
     // Show content rendering & toolbars
     hide(el.editorContainer);
@@ -2777,7 +3310,8 @@ async function toggleEditMode(editing) {
     
     // Re-render markdown & stats & TOC
     const text = el.editorTextarea.value;
-    el.content.innerHTML = marked.parse(text);
+    el.content.innerHTML = renderMd(text);
+    originalContentHtml = ""; // rendering changed — reset search snapshot
     if (window.renderMathInElement) {
       renderMathInElement(el.content, {
         delimiters: [
@@ -2789,16 +3323,22 @@ async function toggleEditMode(editing) {
     }
     updateReadingStats(text);
     buildTOC();
+    // Re-apply glossary highlights after an edit re-render
+    if (autoGlossary.terms && autoGlossary.terms.length) autoGlossary.applyToDOM();
   }
 }
 
 async function saveDocumentContent(isAutoSave = false) {
   if (!state.activeKey) return;
+  if (el.editorLoadedOk === false) {
+    el.saveStatus.textContent = "Save blocked — editor content was never loaded correctly";
+    return;
+  }
   el.saveStatus.textContent = isAutoSave ? "Auto-saving..." : "Saving...";
   
   try {
     const content = el.editorTextarea.value;
-    const res = await fetch(`/api/upload?key=${encodeURIComponent(state.activeKey)}`, {
+    const res = await authFetch(`/api/upload?key=${encodeURIComponent(state.activeKey)}`, {
       method: "PUT",
       body: content
     });
@@ -2874,7 +3414,15 @@ el.exportPdfBtn.addEventListener("click", () => {
     alert("Please finish editing before exporting.");
     return;
   }
+  if (!state.activeKey) return;
+  // Ensure plain-document print mode (not cheat-sheet mode)
+  document.body.classList.remove("printing-cheatsheet");
   window.print();
+});
+
+// Clean up cheat-sheet print mode after the dialog closes
+window.addEventListener("afterprint", () => {
+  document.body.classList.remove("printing-cheatsheet");
 });
 
 el.exportHtmlBtn.addEventListener("click", () => {
@@ -2926,32 +3474,25 @@ el.exportHtmlBtn.addEventListener("click", () => {
 });
 
 /* ---------------- Drag-and-Drop Tree logic ---------------- */
-window.handleFileDragStart = function(e, key) {
-  e.dataTransfer.setData("text/plain", key);
-  e.dataTransfer.effectAllowed = "move";
-};
-
-window.handleFileDrop = async function(e, targetFolder) {
-  e.preventDefault();
-  e.stopPropagation();
-  
-  // Remove hover states
-  document.querySelectorAll(".folder-header").forEach(h => h.classList.remove("drag-over"));
-  
-  const oldKey = e.dataTransfer.getData("text/plain");
-  if (!oldKey) return;
-  
+async function moveFileViaApi(oldKey, newFolder) {
   try {
-    const res = await fetch("/api/move", {
+    const res = await authFetch("/api/move", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ oldKey, newFolder: targetFolder })
+      body: JSON.stringify({ oldKey, newFolder })
     });
-    if (!res.ok) throw new Error("Failed to move file.");
-    
     const data = await res.json();
+    if (!res.ok || data.error) throw new Error(data.error || "Move failed");
+
+    // Keep pins consistent after a move
+    if (state.pinnedKeys.includes(oldKey)) {
+      state.pinnedKeys = state.pinnedKeys.filter(k => k !== oldKey);
+      state.pinnedKeys.push(data.newKey);
+      localStorage.setItem("md-reader-pins", JSON.stringify(state.pinnedKeys));
+    }
+
     await loadFileList();
-    
+
     if (state.activeKey === oldKey) {
       state.activeKey = data.newKey;
       localStorage.setItem("md-reader-active-key", data.newKey);
@@ -2960,38 +3501,43 @@ window.handleFileDrop = async function(e, targetFolder) {
   } catch (err) {
     alert("Error moving file: " + err.message);
   }
-};
+}
 
 el.fileList.addEventListener("dragover", (e) => {
   e.preventDefault();
+  const header = e.target.closest(".folder-header");
+  el.fileList.querySelectorAll(".folder-header.drag-over").forEach(h => {
+    if (h !== header) h.classList.remove("drag-over");
+  });
+  if (header) header.classList.add("drag-over");
+});
+
+el.fileList.addEventListener("dragleave", (e) => {
+  const header = e.target.closest(".folder-header");
+  if (header && !header.contains(e.relatedTarget)) header.classList.remove("drag-over");
 });
 
 el.fileList.addEventListener("drop", async (e) => {
-  if (e.target.closest(".folder-header")) return;
-  
   e.preventDefault();
+  const header = e.target.closest(".folder-header");
+  el.fileList.querySelectorAll(".folder-header.drag-over").forEach(h => h.classList.remove("drag-over"));
+  const targetFolder = header ? (header.dataset.path || "") : "";
+
+  // OS file/folder drop → import into the target folder (opens the Library Manager)
+  if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+    await libraryManager.importDataTransfer(e.dataTransfer);
+    if (targetFolder) {
+      el.libUploadFolderInput.value = targetFolder;
+      libraryManager.refreshConflictFlags();
+      libraryManager.renderQueue();
+    }
+    return;
+  }
+
+  // Internal tree drag → move existing file
   const oldKey = e.dataTransfer.getData("text/plain");
   if (!oldKey) return;
-  
-  try {
-    const res = await fetch("/api/move", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ oldKey, newFolder: "" })
-    });
-    if (!res.ok) throw new Error("Failed to move file to root.");
-    
-    const data = await res.json();
-    await loadFileList();
-    
-    if (state.activeKey === oldKey) {
-      state.activeKey = data.newKey;
-      localStorage.setItem("md-reader-active-key", data.newKey);
-      await openFile(data.newKey);
-    }
-  } catch (err) {
-    alert("Error moving file to root: " + err.message);
-  }
+  await moveFileViaApi(oldKey, targetFolder);
 });
 
 /* ---------------- Mind Map Logic ---------------- */
@@ -3128,6 +3674,7 @@ el.mindMapBtn.addEventListener("click", async () => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         key,
+        model: state.selectedModel,
         messages: [{
           role: "user",
           parts: [{
@@ -3149,7 +3696,7 @@ el.mindMapBtn.addEventListener("click", async () => {
     
     renderMermaidMap(mermaidCode);
   } catch (err) {
-    el.mindMapContainer.innerHTML = `<div style="color:var(--error);text-align:center;padding:20px">⚠️ Failed to generate mind map: ${err.message}</div>`;
+    el.mindMapContainer.innerHTML = `<div style="color:var(--error);text-align:center;padding:20px">⚠️ Failed to generate mind map: ${escapeHtml(err.message)}</div>`;
     hide(el.mindMapSpinner);
   }
 });
@@ -3178,7 +3725,7 @@ function showMermaidFallback(code, errMsg) {
     <div style="width:100%;text-align:center;padding:20px;color:var(--text-dim)">
       <p style="color:var(--error);margin-bottom:12px">⚠️ Diagram rendering error: ${errMsg}</p>
       <p>Raw Mermaid layout code:</p>
-      <pre style="text-align:left;background:var(--bg-elevated);border:1px solid var(--border);border-radius:var(--radius);padding:16px;max-width:600px;margin:12px auto;overflow:auto;font-family:var(--font-mono);font-size:0.82rem;line-height:1.5">${code}</pre>
+      <pre style="text-align:left;background:var(--bg-elevated);border:1px solid var(--border);border-radius:var(--radius);padding:16px;max-width:600px;margin:12px auto;overflow:auto;font-family:var(--font-mono);font-size:0.82rem;line-height:1.5">${escapeHtml(code)}</pre>
     </div>
   `;
   hide(el.mindMapSpinner);
@@ -3249,7 +3796,7 @@ el.synthesisSubmitBtn.addEventListener("click", async () => {
     hide(el.synthesisActionBar);
     loadFileList();
   } catch (err) {
-    el.aiPanelContent.innerHTML = `<p style="color:var(--error)">⚠️ Synthesis failed: ${err.message}</p>`;
+    el.aiPanelContent.innerHTML = `<p style="color:var(--error)">⚠️ Synthesis failed: ${escapeHtml(err.message)}</p>`;
     hide(el.aiSpinner);
   } finally {
     el.synthesisSubmitBtn.disabled = false;
@@ -3294,7 +3841,7 @@ ${aggregatedContext}`;
     
     sendChatPrompt(prompt);
   } catch (err) {
-    el.aiPanelContent.innerHTML = `<p style="color:var(--error)">⚠️ Workspace Search failed: ${err.message}</p>`;
+    el.aiPanelContent.innerHTML = `<p style="color:var(--error)">⚠️ Workspace Search failed: ${escapeHtml(err.message)}</p>`;
     hide(el.aiSpinner);
   }
 });
@@ -3328,8 +3875,8 @@ if (el.cheatSheetBtn) {
       
       let html = `
         <div class="cheatsheet-card" style="grid-column: 1 / -1; background:var(--bg-elevated); border:2px solid var(--accent)">
-          <div class="cheatsheet-card-title" style="font-size:1.1rem; color:var(--text)">📌 ${title}</div>
-          <div style="font-size:0.8rem; color:var(--text-dim)">Document: ${state.activeKey} • Compact 1-Page Exam Cheat Sheet</div>
+          <div class="cheatsheet-card-title" style="font-size:1.1rem; color:var(--text)">📌 ${escapeHtml(title)}</div>
+          <div style="font-size:0.8rem; color:var(--text-dim)">Document: ${escapeHtml(state.activeKey)} • Compact 1-Page Exam Cheat Sheet</div>
         </div>
       `;
       
@@ -3339,8 +3886,8 @@ if (el.cheatSheetBtn) {
             <div class="cheatsheet-card-title">📖 Core Definitions & Concepts</div>
             ${keyDefs.map(item => `
               <div class="cheatsheet-item">
-                <span class="cheatsheet-term">• ${item.term}:</span>
-                <span class="cheatsheet-def"> ${item.definition}</span>
+                <span class="cheatsheet-term">• ${escapeHtml(item.term)}:</span>
+                <span class="cheatsheet-def"> ${escapeHtml(item.definition)}</span>
               </div>
             `).join('')}
           </div>
@@ -3353,9 +3900,9 @@ if (el.cheatSheetBtn) {
             <div class="cheatsheet-card-title">💻 Formulas, Syntax & Commands</div>
             ${formulas.map(item => `
               <div class="cheatsheet-item">
-                <div class="cheatsheet-term">${item.concept}</div>
-                <div class="cheatsheet-code">${item.codeOrFormula}</div>
-                <div class="cheatsheet-def" style="margin-top:2px">${item.explanation}</div>
+                <div class="cheatsheet-term">${escapeHtml(item.concept)}</div>
+                <div class="cheatsheet-code">${escapeHtml(item.codeOrFormula)}</div>
+                <div class="cheatsheet-def" style="margin-top:2px">${escapeHtml(item.explanation)}</div>
               </div>
             `).join('')}
           </div>
@@ -3369,7 +3916,7 @@ if (el.cheatSheetBtn) {
             ${rules.map(rule => `
               <div class="cheatsheet-item" style="display:flex; gap:6px">
                 <span style="color:var(--accent)">✓</span>
-                <span class="cheatsheet-def">${rule}</span>
+                <span class="cheatsheet-def">${escapeHtml(rule)}</span>
               </div>
             `).join('')}
           </div>
@@ -3380,7 +3927,7 @@ if (el.cheatSheetBtn) {
       show(el.cheatSheetContent, 'grid');
     } catch (err) {
       hide(el.cheatSheetSpinner);
-      el.cheatSheetContent.innerHTML = `<p style="color:var(--error); padding:20px; text-align:center">⚠️ Failed to generate Cheat Sheet: ${err.message}</p>`;
+      el.cheatSheetContent.innerHTML = `<p style="color:var(--error); padding:20px; text-align:center">⚠️ Failed to generate Cheat Sheet: ${escapeHtml(err.message)}</p>`;
       show(el.cheatSheetContent, 'block');
     }
   });
@@ -3394,7 +3941,10 @@ if (el.cheatSheetModalClose) {
 
 if (el.printCheatSheetBtn) {
   el.printCheatSheetBtn.addEventListener("click", () => {
+    document.body.classList.add("printing-cheatsheet");
     window.print();
+    // afterprint listener (registered globally) removes the class
+    setTimeout(() => document.body.classList.remove("printing-cheatsheet"), 2000);
   });
 }
 
@@ -3528,10 +4078,27 @@ const gamification = {
 };
 
 /* ================================================================
-   2. AI AUTO-GLOSSARY & HOVER TOOLTIPS
+   2. AI AUTO-GLOSSARY — rich terms, smart highlighting,
+      interactive tooltips, dictionary, hub, SRS integration
    ================================================================ */
 const autoGlossary = {
   terms: [],
+  currentLanguage: localStorage.getItem("md-reader-glossary-lang") || "English",
+
+  CATEGORIES: {
+    acronym:  { icon: "🔤", color: "#a78bfa" },
+    concept:  { icon: "💡", color: "#60a5fa" },
+    protocol: { icon: "🌐", color: "#2dd4bf" },
+    tool:     { icon: "🛠️", color: "#fbbf24" },
+    person:   { icon: "👤", color: "#fb7185" },
+    method:   { icon: "🧭", color: "#34d399" },
+    formula:  { icon: "🧮", color: "#f472b6" },
+    other:    { icon: "📌", color: "#94a3b8" }
+  },
+
+  _tooltip: null,
+  _tooltipPinned: false,
+  _hideTimer: null,
 
   init() {
     if (el.autoGlossaryBtn) {
@@ -3539,42 +4106,79 @@ const autoGlossary = {
         this.fetchAndApply();
       });
     }
+    // Delegated span interactions — hover shows, click/tap pins the tooltip
+    el.content.addEventListener('mouseover', (e) => {
+      const s = e.target.closest && e.target.closest('.glossary-term');
+      if (s) { clearTimeout(this._hideTimer); this.showTooltip(s); }
+    });
+    el.content.addEventListener('mouseout', (e) => {
+      if (e.target.closest && e.target.closest('.glossary-term')) this.scheduleHide();
+    });
+    el.content.addEventListener('click', (e) => {
+      const s = e.target.closest && e.target.closest('.glossary-term');
+      if (!s) return;
+      e.stopPropagation();
+      clearTimeout(this._hideTimer);
+      this.showTooltip(s, true);
+    });
+    // Clicking anywhere outside the tooltip closes a pinned tooltip
+    document.addEventListener('click', (e) => {
+      if (!this._tooltip || this._tooltip.style.display === 'none') return;
+      if (this._tooltip.contains(e.target)) return;
+      if (e.target.closest && e.target.closest('.glossary-term')) return;
+      this.hideTooltip(true);
+    });
   },
 
-  async fetchAndApply() {
+  /** Backfill missing fields on cached/older glossaries */
+  normalizeTermData(t) {
+    return {
+      term: String(t.term || "").trim(),
+      definition: t.definition || "",
+      aliases: Array.isArray(t.aliases) ? t.aliases.filter(Boolean).slice(0, 2) : [],
+      category: this.CATEGORIES[t.category] ? t.category : "other",
+      importance: (t.importance >= 1 && t.importance <= 3) ? t.importance : 2,
+      definitionLocal: t.definitionLocal || null
+    };
+  },
+
+  async fetchAndApply(forceLanguage = null) {
     if (!state.activeKey) return;
     const key = state.activeKey;
+    const language = forceLanguage || this.currentLanguage;
 
-    // Check local memory cache first
-    if (state.aiCache[key] && state.aiCache[key].glossary && state.aiCache[key].glossary.length) {
-      this.terms = state.aiCache[key].glossary;
+    // English + cached → apply instantly, no network call
+    if (language === "English" && state.aiCache[key] && state.aiCache[key].glossary && state.aiCache[key].glossary.length) {
+      this.terms = state.aiCache[key].glossary.map(t => this.normalizeTermData(t));
       this.applyToDOM();
       this.renderGlossaryPanel();
       return;
     }
-    
+
     openAiPanel("🔍 Extracting Glossary Terms...", false, 'glossary');
     show(el.aiSpinner, 'flex');
     const btn = el.autoGlossaryBtn;
     const originalText = btn.innerHTML;
     btn.innerHTML = `<span class="spinner-ring" style="width:12px;height:12px;display:inline-block"></span> Extracting...`;
-    
+
     try {
       const res = await fetch("/api/ai/glossary", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ key, model: state.selectedModel })
+        body: JSON.stringify({ key, model: state.selectedModel, language })
       });
-      
+
       hide(el.aiSpinner);
       if (!res.ok) throw new Error(`Server returned ${res.status}`);
       const data = await res.json();
-      this.terms = data.terms || [];
-      
+      this.terms = (data.terms || []).map(t => this.normalizeTermData(t));
+
       if (this.terms.length > 0) {
         if (!state.aiCache[key]) state.aiCache[key] = {};
         state.aiCache[key].glossary = this.terms;
         saveAiCache();
+        this.currentLanguage = language;
+        localStorage.setItem("md-reader-glossary-lang", language);
 
         this.applyToDOM();
         this.renderGlossaryPanel();
@@ -3582,52 +4186,35 @@ const autoGlossary = {
       } else {
         el.aiPanelContent.innerHTML = `<div style="padding:16px; color:var(--text-dim)">No specialized jargon or terms detected in this document.</div>`;
       }
-    } catch(err) {
+    } catch (err) {
       hide(el.aiSpinner);
-      alert(`Auto-Glossary error: ${err.message}`);
+      alert(`Auto-Glossary error: ${escapeHtml(err.message)}`);
     } finally {
       btn.innerHTML = originalText;
     }
   },
 
-  renderGlossaryPanel() {
-    if (!this.terms.length) return;
-    openAiPanel("🔍 Auto-Glossary Vocabulary", false, 'glossary');
-
-    let rowsHtml = this.terms.map(t => `
-      <div style="padding:12px; border:1px solid var(--border); border-radius:var(--radius); background:var(--bg-card); margin-bottom:8px; transition:all 0.2s">
-        <div style="font-weight:700; color:var(--accent); font-size:0.92rem; margin-bottom:4px; display:flex; align-items:center; justify-content:space-between">
-          <span>🔍 ${t.term}</span>
-        </div>
-        <div style="font-size:0.85rem; color:var(--text); line-height:1.5">
-          ${t.definition}
-        </div>
-      </div>
-    `).join('');
-
-    el.aiPanelContent.innerHTML = `
-      <div style="padding:16px">
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; padding-bottom:10px; border-bottom:1px solid var(--border)">
-          <span style="font-size:0.82rem; font-weight:700; color:var(--accent); text-transform:uppercase; letter-spacing:0.05em">
-            🔍 Extracted Jargon (${this.terms.length} Terms)
-          </span>
-          <span style="font-size:0.75rem; color:var(--text-dim)">
-            Hover/Tap terms in reader to view tooltips
-          </span>
-        </div>
-        <div>
-          ${rowsHtml}
-        </div>
-      </div>
-    `;
+  /** Build ONE combined matcher: longest-first alternation, tolerant boundaries (C#, .NET work), alias-aware */
+  buildMatcher() {
+    const entries = [];
+    this.terms.forEach(t => {
+      entries.push({ label: t.term, root: t });
+      t.aliases.forEach(a => { if (a && a.toLowerCase() !== t.term.toLowerCase()) entries.push({ label: a, root: t }); });
+    });
+    entries.sort((a, b) => b.label.length - a.label.length);
+    const pattern = entries.map(e => escapeRegExp(e.label)).join("|");
+    if (!pattern) return null;
+    return {
+      regex: new RegExp(`(^|[^A-Za-z0-9_])(?:(${pattern}))(?![A-Za-z0-9_]|$)`, "gi"),
+      lookup: entries
+    };
   },
 
   applyToDOM() {
     if (!this.terms.length || !el.content) return;
-    
+
     // Remove previous glossary spans to prevent duplication
-    const oldSpans = el.content.querySelectorAll('.glossary-term');
-    oldSpans.forEach(span => {
+    el.content.querySelectorAll('.glossary-term').forEach(span => {
       const parent = span.parentNode;
       if (parent) {
         parent.replaceChild(document.createTextNode(span.textContent), span);
@@ -3635,83 +4222,432 @@ const autoGlossary = {
       }
     });
 
-    // Safe Text Node replacement using TreeWalker
-    this.terms.forEach(item => {
-      const regex = new RegExp(`\\b(${item.term})\\b`, 'i');
-      const walker = document.createTreeWalker(el.content, NodeFilter.SHOW_TEXT, {
-        acceptNode(node) {
-          if (!node.nodeValue || !node.nodeValue.trim()) return NodeFilter.FILTER_SKIP;
-          const parentTag = node.parentElement ? node.parentElement.tagName.toLowerCase() : '';
-          if (['script', 'style', 'code', 'pre', 'a'].includes(parentTag)) return NodeFilter.FILTER_SKIP;
-          if (node.parentElement && node.parentElement.classList.contains('glossary-term')) return NodeFilter.FILTER_SKIP;
-          return regex.test(node.nodeValue) ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_SKIP;
-        }
-      });
+    const matcher = this.buildMatcher();
+    if (!matcher) return;
+    const { regex, lookup } = matcher;
 
-      const nodesToReplace = [];
-      while (walker.nextNode()) {
-        nodesToReplace.push(walker.currentNode);
+    // Single DOM pass wrapping EVERY occurrence
+    const walker = document.createTreeWalker(el.content, NodeFilter.SHOW_TEXT, {
+      acceptNode(node) {
+        if (!node.nodeValue || !node.nodeValue.trim()) return NodeFilter.FILTER_SKIP;
+        const parentTag = node.parentElement ? node.parentElement.tagName.toLowerCase() : '';
+        if (['script', 'style', 'code', 'pre', 'a'].includes(parentTag)) return NodeFilter.FILTER_SKIP;
+        if (node.parentElement && node.parentElement.classList.contains('glossary-term')) return NodeFilter.FILTER_SKIP;
+        regex.lastIndex = 0;
+        return regex.test(node.nodeValue) ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_SKIP;
       }
+    });
 
-      nodesToReplace.forEach(node => {
-        const match = regex.exec(node.nodeValue);
-        if (!match) return;
+    const nodesToReplace = [];
+    while (walker.nextNode()) nodesToReplace.push(walker.currentNode);
 
-        const before = node.nodeValue.substring(0, match.index);
-        const matchedText = match[0];
-        const after = node.nodeValue.substring(match.index + matchedText.length);
-
+    nodesToReplace.forEach(node => {
+      const text = node.nodeValue;
+      regex.lastIndex = 0;
+      const frag = document.createDocumentFragment();
+      let lastIdx = 0;
+      let m;
+      while ((m = regex.exec(text)) !== null) {
+        const matchedLabel = m[2];
+        const start = m.index + m[1].length;
+        if (start > lastIdx) frag.appendChild(document.createTextNode(text.slice(lastIdx, start)));
+        const root = lookup.find(e => e.label.toLowerCase() === matchedLabel.toLowerCase());
         const span = document.createElement('span');
-        span.className = 'glossary-term';
-        span.dataset.def = item.definition;
-        span.textContent = matchedText;
-
-        const frag = document.createDocumentFragment();
-        if (before) frag.appendChild(document.createTextNode(before));
+        const data = root ? root.root : { term: matchedLabel, definition: "", category: "other", importance: 2 };
+        span.className = `glossary-term gt-cat-${data.category}`;
+        span.dataset.rootTerm = data.term;
+        span.dataset.def = data.definition || "";
+        span.dataset.local = data.definitionLocal || "";
+        span.dataset.category = data.category;
+        span.dataset.importance = data.importance;
+        span.textContent = matchedLabel;
         frag.appendChild(span);
-        if (after) frag.appendChild(document.createTextNode(after));
+        lastIdx = start + matchedLabel.length;
+        if (regex.lastIndex === m.index) regex.lastIndex++; // guard zero-length
+      }
+      if (lastIdx < text.length) frag.appendChild(document.createTextNode(text.slice(lastIdx)));
+      if (node.parentNode) node.parentNode.replaceChild(frag, node);
+    });
+  },
 
-        if (node.parentNode) {
-          node.parentNode.replaceChild(frag, node);
+  /* ---------------- Tooltip ---------------- */
+  ensureTooltip() {
+    if (this._tooltip) return this._tooltip;
+    const tip = document.createElement('div');
+    tip.id = 'activeGlossaryTooltip';
+    tip.className = 'glossary-tooltip';
+    tip.style.display = 'none';
+    document.body.appendChild(tip);
+
+    tip.addEventListener('mouseenter', () => { clearTimeout(this._hideTimer); });
+    tip.addEventListener('mouseleave', () => { this.scheduleHide(); });
+    tip.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const action = e.target.closest('[data-gt-action]');
+      if (action) {
+        const rootTerm = tip.dataset.rootTerm;
+        const def = tip.dataset.def || "";
+        const local = tip.dataset.local || "";
+        this.handleAction(action.dataset.gtAction, { term: rootTerm, definition: def, definitionLocal: local });
+        return;
+      }
+      if (e.target.closest('.gt-close-btn')) this.hideTooltip(true);
+    });
+    this._tooltip = tip;
+    return tip;
+  },
+
+  handleAction(action, termObj) {
+    if (action === "read") {
+      window.speechSynthesis.cancel();
+      const u = new SpeechSynthesisUtterance(`${termObj.term}. ${termObj.definition}`);
+      u.rate = state.speechRate || 1;
+      window.speechSynthesis.speak(u);
+    } else if (action === "ask") {
+      this.hideTooltip(true);
+      openAiPanel("🧠 Study Tutor", true, 'chat');
+      const key = state.activeKey;
+      if (state.aiCache[key]) state.chatHistory = state.aiCache[key].chatHistory || [];
+      sendChatPrompt(`Explain the term "${termObj.term}" in the context of this document.`);
+    } else if (action === "dict") {
+      dictionaryStore.add(termObj, state.activeKey);
+    }
+  },
+
+  showTooltip(elem, pin = false) {
+    const tip = this.ensureTooltip();
+    clearTimeout(this._hideTimer);
+    this._tooltipPinned = false;
+
+    const root = elem.dataset.rootTerm || elem.textContent;
+    const def = elem.dataset.def || "";
+    const local = elem.dataset.local || "";
+    const cat = elem.dataset.category || "other";
+    const importance = parseInt(elem.dataset.importance || "2", 10);
+    const catMeta = this.CATEGORIES[cat] || this.CATEGORIES.other;
+    const stars = "★".repeat(importance) + "☆".repeat(3 - importance);
+
+    tip.dataset.rootTerm = root;
+    tip.dataset.def = def;
+    tip.dataset.local = local;
+
+    tip.innerHTML = "";
+    const header = document.createElement('div');
+    header.className = 'glossary-tooltip-head';
+    header.innerHTML = `
+      <span class="glossary-tooltip-term">${escapeHtml(root)}</span>
+      <span class="gt-cat-chip" style="background:${catMeta.color}22;color:${catMeta.color};border:1px solid ${catMeta.color}">${catMeta.icon} ${escapeHtml(cat)}</span>
+      <span class="gt-stars" title="Importance ${importance}/3">${stars}</span>
+      <button class="gt-close-btn" aria-label="Close">✕</button>
+    `;
+    tip.appendChild(header);
+
+    if (def) {
+      const d = document.createElement('div');
+      d.className = 'gt-def';
+      d.textContent = def;
+      tip.appendChild(d);
+    }
+    if (local) {
+      const l = document.createElement('div');
+      l.className = 'gt-local';
+      l.textContent = local;
+      tip.appendChild(l);
+    }
+
+    const actions = document.createElement('div');
+    actions.className = 'gt-actions';
+    actions.innerHTML = `
+      <button data-gt-action="read" title="Read definition aloud">🔊 Read</button>
+      <button data-gt-action="ask" title="Ask the AI Tutor about this term">💬 Ask</button>
+      <button data-gt-action="dict" title="Save to Dictionary.md">📖 +Dictionary</button>
+    `;
+    tip.appendChild(actions);
+
+    // Measure then position with viewport flip
+    tip.style.visibility = 'hidden';
+    tip.style.display = 'block';
+    const rect = elem.getBoundingClientRect();
+    const w = tip.offsetWidth, h = tip.offsetHeight;
+    let left = Math.max(10, Math.min(window.innerWidth - w - 10, rect.left));
+    let top = rect.bottom + 6;
+    if (top + h > window.innerHeight - 8 && rect.top - h - 6 > 8) {
+      top = rect.top - h - 6; // flip above the term
+    }
+    tip.style.left = left + 'px';
+    tip.style.top = top + 'px';
+    tip.style.visibility = 'visible';
+
+    if (pin) this._tooltipPinned = true;
+  },
+
+  scheduleHide(ms = 200) {
+    clearTimeout(this._hideTimer);
+    this._hideTimer = setTimeout(() => {
+      if (!this._tooltipPinned) this.hideTooltip();
+    }, ms);
+  },
+
+  hideTooltip(force = false) {
+    if (this._tooltipPinned && !force) return;
+    if (this._tooltip) this._tooltip.style.display = 'none';
+    this._tooltipPinned = false;
+  },
+
+  /* ---------------- Panel ---------------- */
+  renderGlossaryPanel() {
+    if (!this.terms.length) return;
+    openAiPanel("🔍 Auto-Glossary Vocabulary", false, 'glossary');
+
+    const langOptions = aiTranslator.languages.map(l =>
+      `<option value="${l.code}" ${l.code === this.currentLanguage ? 'selected' : ''}>${escapeHtml(l.code)}</option>`
+    ).join("") + `<option value="English" ${this.currentLanguage === "English" ? 'selected' : ''}>English</option>`;
+
+    const sorted = [...this.terms].sort((a, b) => b.importance - a.importance || a.term.localeCompare(b.term));
+    let rowsHtml = sorted.map(t => {
+      const catMeta = this.CATEGORIES[t.category];
+      const stars = "★".repeat(t.importance) + "☆".repeat(3 - t.importance);
+      const aliasesHtml = t.aliases.length
+        ? t.aliases.map(a => `<span class="gt-alias-chip">${escapeHtml(a)}</span>`).join("")
+        : "";
+      return `
+        <div class="gt-row" data-gt-term="${escapeHtml(t.term)}">
+          <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap; margin-bottom:4px">
+            <span style="font-weight:700; color:var(--accent); font-size:0.92rem">🔍 ${escapeHtml(t.term)}</span>
+            <span class="gt-cat-chip" style="background:${catMeta.color}22;color:${catMeta.color};border:1px solid ${catMeta.color}">${catMeta.icon} ${escapeHtml(t.category)}</span>
+            ${aliasesHtml}
+            <span class="gt-stars" title="Importance ${t.importance}/3">${stars}</span>
+          </div>
+          <div style="font-size:0.85rem; color:var(--text); line-height:1.5">${escapeHtml(t.definition)}</div>
+          ${t.definitionLocal ? `<div class="gt-local" style="margin-top:4px">${escapeHtml(t.definitionLocal)}</div>` : ""}
+        </div>
+      `;
+    }).join('');
+
+    el.aiPanelContent.innerHTML = `
+      <div style="padding:16px">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; padding-bottom:10px; border-bottom:1px solid var(--border); flex-wrap:wrap; gap:8px">
+          <span style="font-size:0.82rem; font-weight:700; color:var(--accent); text-transform:uppercase; letter-spacing:0.05em">
+            🔍 ${this.terms.length} Terms
+          </span>
+          <div style="display:flex; gap:6px; align-items:center; flex-wrap:wrap">
+            <select id="glossaryLangSelect" title="Definition language" style="padding:3px 6px; font-size:0.75rem; background:var(--bg-card); color:var(--text); border:1px solid var(--border); border-radius:var(--radius); outline:none">
+              ${langOptions}
+            </select>
+            <button id="glossaryFlashcardsBtn" class="lib-mini-btn" title="Turn these terms into flashcards">🗂️ Study</button>
+            <button id="glossaryCsvBtn" class="lib-mini-btn" title="Export glossary as CSV">⬇ CSV</button>
+          </div>
+        </div>
+        <div>${rowsHtml}</div>
+      </div>
+    `;
+
+    // Row click → jump to first occurrence in the document
+    el.aiPanelContent.querySelectorAll('.gt-row').forEach(row => {
+      row.addEventListener('click', (e) => {
+        if (e.target.closest('button,select')) return;
+        const term = (row.dataset.gtTerm || "").toLowerCase();
+        const span = el.content.querySelector(`.glossary-term[data-root-term="${CSS.escape(row.dataset.gtTerm)}"]`)
+          || [...el.content.querySelectorAll('.glossary-term')].find(s => (s.dataset.rootTerm || '').toLowerCase() === term);
+        if (span) {
+          span.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          this.showTooltip(span, true);
         }
       });
     });
 
-    // Attach tooltip events
-    el.content.querySelectorAll('.glossary-term').forEach(elem => {
-      const showTooltip = (e) => {
-        let tooltip = document.getElementById('activeGlossaryTooltip');
-        if (!tooltip) {
-          tooltip = document.createElement('div');
-          tooltip.id = 'activeGlossaryTooltip';
-          tooltip.className = 'glossary-tooltip';
-          document.body.appendChild(tooltip);
-        }
-
-        const term = elem.textContent;
-        const def = elem.dataset.def;
-        tooltip.innerHTML = `<div class="glossary-tooltip-term">${term}</div><div>${def}</div>`;
-        
-        const rect = elem.getBoundingClientRect();
-        tooltip.style.left = Math.max(10, Math.min(window.innerWidth - 300, rect.left)) + 'px';
-        tooltip.style.top = (rect.bottom + window.scrollY + 6) + 'px';
-        tooltip.style.display = 'block';
-      };
-
-      const hideTooltip = () => {
-        const tooltip = document.getElementById('activeGlossaryTooltip');
-        if (tooltip) tooltip.style.display = 'none';
-      };
-
-      elem.addEventListener('mouseenter', showTooltip);
-      elem.addEventListener('mouseleave', hideTooltip);
-      elem.addEventListener('touchstart', (e) => {
-        showTooltip(e);
-        setTimeout(hideTooltip, 3500);
-      });
+    const langSelect = el.aiPanelContent.querySelector('#glossaryLangSelect');
+    langSelect.addEventListener('change', (e) => {
+      e.stopPropagation();
+      this.fetchAndApply(e.target.value);
     });
+
+    el.aiPanelContent.querySelector('#glossaryFlashcardsBtn').addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.makeFlashcardsFromGlossary();
+    });
+    el.aiPanelContent.querySelector('#glossaryCsvBtn').addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.exportCsv();
+    });
+  },
+
+  makeFlashcardsFromGlossary() {
+    const key = state.activeKey;
+    if (!key || !this.terms.length) return;
+    if (!state.aiCache[key]) state.aiCache[key] = {};
+    const cache = state.aiCache[key];
+    cache.flashcards = this.terms.map(t => ({
+      question: t.term,
+      answer: t.definition + (t.definitionLocal ? `\n\n${t.definitionLocal}` : "")
+    }));
+    cache.flashcardIndex = 0;
+    cache.flashcardOrder = srsDeck.buildStudyOrder(key, cache.flashcards.length);
+    saveAiCache();
+    el.flashcardsBtn.click();
+  },
+
+  exportCsv() {
+    if (!this.terms.length) return;
+    const docName = (state.activeKey || "document").split('/').pop().replace(/\.(md|markdown)$/i, '');
+    const quoted = (v) => `"${String(v ?? "").replace(/"/g, '""')}"`;
+    let csv = "term,definition,aliases,category,importance,definition_local\n";
+    this.terms.forEach(t => {
+      csv += [quoted(t.term), quoted(t.definition), quoted(t.aliases.join("; ")), quoted(t.category), t.importance, quoted(t.definitionLocal || "")].join(",") + "\n";
+    });
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${docName}_glossary.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
   }
 };
+
+/* ---------------- 📖 Personal Dictionary (Dictionary.md in R2) ---------------- */
+const dictionaryStore = {
+  KEY: "Dictionary.md",
+
+  async add(termObj, sourceKey) {
+    try {
+      let text = "";
+      try {
+        const r = await fetch(`/api/file?key=${encodeURIComponent(this.KEY)}`);
+        if (r.ok) text = await r.text();
+      } catch (e) { /* will create new */ }
+
+      const esc = (s) => String(s ?? "").replace(/\|/g, "\\|").replace(/\s+/g, " ").trim();
+      const term = esc(termObj.term);
+      const def = esc(termObj.definitionLocal || termObj.definition);
+      const src = esc(sourceKey || "");
+
+      if (new RegExp(`^\\|\\s*${escapeRegExp(term)}\\s*\\|`, "im").test(text)) {
+        quickToast(`📖 "${term}" is already in your Dictionary`);
+        return;
+      }
+
+      if (!text) {
+        text = "# 📖 My Dictionary\n\n| Term | Definition | Source |\n| --- | --- | --- |\n";
+      } else if (!/^\|\s*Term\s*\|/im.test(text)) {
+        text = text.replace(/\s*$/, "") + "\n\n| Term | Definition | Source |\n| --- | --- | --- |\n";
+      }
+
+      text = text.replace(/\s*$/, "") + `\n| ${term} | ${def} | [[${src}]] |\n`;
+
+      const res = await authFetch(`/api/upload?key=${encodeURIComponent(this.KEY)}`, {
+        method: "PUT",
+        body: text
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      quickToast(`📖 "${term}" added to Dictionary.md`);
+      loadFileList();
+    } catch (err) {
+      quickToast("❌ Dictionary save failed: " + err.message);
+    }
+  }
+};
+
+/* ---------------- 🌐 Global Glossary Manager (aggregation across docs) ---------------- */
+const glossaryHub = {
+  init() {
+    if (!el.glossaryHubBtn) return;
+    el.glossaryHubBtn.addEventListener('click', () => this.open());
+    if (el.glossaryHubModalClose) el.glossaryHubModalClose.addEventListener('click', () => hide(el.glossaryHubModal));
+    if (el.glossaryHubSearch) el.glossaryHubSearch.addEventListener('input', () => this.render());
+  },
+
+  collect() {
+    const map = new Map(); // lowercase term -> { term, definition, category, importance, docs:Set }
+    for (const key of Object.keys(state.aiCache || {})) {
+      if (key === "$general") continue;
+      const g = state.aiCache[key].glossary;
+      if (!g || !g.length) continue;
+      g.forEach(raw => {
+        const t = autoGlossary.normalizeTermData(raw);
+        if (!t.term) return;
+        const id = t.term.toLowerCase();
+        if (!map.has(id)) {
+          map.set(id, { ...t, docs: new Set([key]) });
+        } else {
+          const e = map.get(id);
+          e.docs.add(key);
+          if (t.importance > e.importance) e.importance = t.importance;
+        }
+      });
+    }
+    return [...map.values()];
+  },
+
+  open() {
+    show(el.glossaryHubModal, 'flex');
+    el.glossaryHubSearch.value = "";
+    this.render();
+    el.glossaryHubSearch.focus();
+  },
+
+  render() {
+    const q = (el.glossaryHubSearch.value || "").trim().toLowerCase();
+    const all = this.collect()
+      .filter(t => !q || t.term.toLowerCase().includes(q) || [...t.docs].join(" ").toLowerCase().includes(q))
+      .sort((a, b) => b.importance - a.importance || a.term.localeCompare(b.term));
+
+    const docsWithGlossary = Object.keys(state.aiCache || {}).filter(k => k !== "$general" && state.aiCache[k].glossary && state.aiCache[k].glossary.length).length;
+
+    if (!all.length) {
+      el.glossaryHubList.innerHTML = `<div style="text-align:center;padding:26px;color:var(--text-dim);font-size:0.85rem">
+        ${q ? 'No terms match your search.' : 'No glossaries yet.<br>Run <strong>🔍 Auto-Glossary</strong> on a document first.'}
+      </div>`;
+    } else {
+      el.glossaryHubList.innerHTML = all.map(t => {
+        const catMeta = autoGlossary.CATEGORIES[t.category];
+        const stars = "★".repeat(t.importance) + "☆".repeat(3 - t.importance);
+        const docLinks = [...t.docs].slice(0, 4).map(k =>
+          `<button class="ghub-doc-link" data-ghub-doc="${escapeHtml(k)}" title="${escapeHtml(k)}">📄 ${escapeHtml(k.split('/').pop().replace(/\.(md|markdown)$/i, ''))}</button>`
+        ).join("");
+        const more = t.docs.size > 4 ? `<span style="font-size:0.7rem;color:var(--text-dim)">+${t.docs.size - 4} more</span>` : "";
+        return `
+          <div class="ghub-row">
+            <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+              <span style="font-weight:700;color:var(--accent)">${escapeHtml(t.term)}</span>
+              <span class="gt-cat-chip" style="background:${catMeta.color}22;color:${catMeta.color};border:1px solid ${catMeta.color}">${catMeta.icon} ${escapeHtml(t.category)}</span>
+              <span class="gt-stars">${stars}</span>
+              <span class="ghub-count" title="Appears in ${t.docs.size} document(s)">${t.docs.size} doc${t.docs.size === 1 ? '' : 's'}</span>
+            </div>
+            <div style="font-size:0.84rem;color:var(--text);line-height:1.5;margin:4px 0">${escapeHtml(t.definition)}</div>
+            <div style="display:flex;gap:4px;flex-wrap:wrap;align-items:center">${docLinks}${more}</div>
+          </div>
+        `;
+      }).join("");
+
+      el.glossaryHubList.querySelectorAll(".ghub-doc-link").forEach(btn =>
+        btn.addEventListener("click", () => {
+          hide(el.glossaryHubModal);
+          openFile(btn.dataset.ghubDoc);
+        }));
+    }
+
+    el.glossaryHubStats.textContent = `${all.length} unique term${all.length === 1 ? '' : 's'} across ${docsWithGlossary} document${docsWithGlossary === 1 ? '' : 's'}`;
+  }
+};
+
+/* ---------------- tiny toast helper ---------------- */
+let quickToastTimer = null;
+function quickToast(msg) {
+  let t = document.getElementById("quickToast");
+  if (!t) {
+    t = document.createElement("div");
+    t.id = "quickToast";
+    t.className = "quick-toast";
+    document.body.appendChild(t);
+  }
+  t.textContent = msg;
+  t.classList.add("show");
+  clearTimeout(quickToastTimer);
+  quickToastTimer = setTimeout(() => t.classList.remove("show"), 2600);
+}
 
 /* ================================================================
    AI CONTEXT-AWARE TRANSLATOR
@@ -3801,7 +4737,7 @@ const aiTranslator = {
       hide(el.aiSpinner);
       el.aiPanelContent.innerHTML = `
         <div style="padding:16px; background:rgba(248,81,73,0.08); border:1px solid var(--error); border-radius:var(--radius); color:var(--error)">
-          <strong>Translation Failed:</strong> ${err.message}
+          <strong>Translation Failed:</strong> ${escapeHtml(err.message)}
         </div>
       `;
     }
@@ -3812,9 +4748,9 @@ const aiTranslator = {
     if (data.keyTerms && data.keyTerms.length) {
       const rows = data.keyTerms.map(t => `
         <tr style="border-bottom:1px solid var(--border)">
-          <td style="padding:8px 10px; font-weight:600; color:var(--accent); font-size:0.85rem">${t.originalTerm}</td>
-          <td style="padding:8px 10px; font-weight:600; font-size:0.85rem">${t.translatedTerm}</td>
-          <td style="padding:8px 10px; font-size:0.8rem; color:var(--text-dim)">${t.contextNote}</td>
+          <td style="padding:8px 10px; font-weight:600; color:var(--accent); font-size:0.85rem">${escapeHtml(t.originalTerm)}</td>
+          <td style="padding:8px 10px; font-weight:600; font-size:0.85rem">${escapeHtml(t.translatedTerm)}</td>
+          <td style="padding:8px 10px; font-size:0.8rem; color:var(--text-dim)">${escapeHtml(t.contextNote)}</td>
         </tr>
       `).join('');
 
@@ -3842,13 +4778,13 @@ const aiTranslator = {
     }
 
     const translatedMarkdown = data.fullTranslation || data.contextualSummary || "";
-    const htmlContent = marked.parse(translatedMarkdown);
+    const htmlContent = renderMd(translatedMarkdown);
 
     el.aiPanelContent.innerHTML = `
       <div style="padding:16px">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; padding-bottom:10px; border-bottom:1px solid var(--border); flex-wrap:wrap; gap:8px">
           <span style="font-size:0.82rem; font-weight:700; color:var(--accent); text-transform:uppercase; letter-spacing:0.05em">
-            🌐 Full ${data.targetLanguage} Translation
+            🌐 Full ${escapeHtml(data.targetLanguage || '')} Translation
           </span>
           <div style="display:flex; gap:6px">
             <button id="applyToReaderBtn" class="btn-primary" style="padding:4px 10px; font-size:0.75rem; background:var(--accent); border:none; border-radius:var(--radius); color:var(--accent-contrast); cursor:pointer">
@@ -3860,7 +4796,7 @@ const aiTranslator = {
           </div>
         </div>
 
-        <h2 style="margin:0 0 12px; font-size:1.2rem">${data.translatedTitle || "Translated Document"}</h2>
+        <h2 style="margin:0 0 12px; font-size:1.2rem">${escapeHtml(data.translatedTitle || "Translated Document")}</h2>
         <div class="markdown-body" style="font-size:0.92rem; line-height:1.7">
           ${htmlContent}
         </div>
@@ -3973,7 +4909,7 @@ const aiPodcast = {
       hide(el.aiSpinner);
       el.aiPanelContent.innerHTML = `
         <div style="padding:16px; background:rgba(248,81,73,0.08); border:1px solid var(--error); border-radius:var(--radius); color:var(--error)">
-          <strong>Podcast Generation Error:</strong> ${err.message}
+          <strong>Podcast Generation Error:</strong> ${escapeHtml(err.message)}
         </div>
       `;
     }
@@ -3993,10 +4929,10 @@ const aiPodcast = {
           </div>
           <div style="flex:1">
             <div style="font-size:0.78rem; font-weight:700; color:var(--text-dim); margin-bottom:4px">
-              ${item.speaker}
+              ${escapeHtml(item.speaker)}
             </div>
             <div style="font-size:0.9rem; line-height:1.5; color:var(--text)">
-              ${item.text}
+              ${escapeHtml(item.text)}
             </div>
           </div>
         </div>
@@ -4008,9 +4944,9 @@ const aiPodcast = {
         <!-- Podcast Title Header -->
         <div style="margin-bottom:16px; padding-bottom:12px; border-bottom:1px solid var(--border)">
           <div style="font-size:0.75rem; font-weight:700; color:var(--accent); text-transform:uppercase; letter-spacing:0.05em">
-            📻 NotebookLM 2-Host Episode • ${data.language}
+            📻 NotebookLM 2-Host Episode • ${escapeHtml(data.language || '')}
           </div>
-          <h2 style="margin:4px 0 0; font-size:1.25rem">${data.podcastTitle || "Study Podcast Episode"}</h2>
+          <h2 style="margin:4px 0 0; font-size:1.25rem">${escapeHtml(data.podcastTitle || "Study Podcast Episode")}</h2>
         </div>
 
         <!-- Audio Player & Controls Bar -->
@@ -4455,12 +5391,6 @@ const highlights = {
       mark.setAttribute('data-hl-id', id);
       mark.setAttribute('data-hl-color', color);
       range.surroundContents(mark);
-
-      mark.addEventListener('click', (e) => {
-        e.stopPropagation();
-        this._activeHighlightId = id;
-        this.showToolbarAtElement(mark);
-      });
     } catch(e) {
       // surroundContents fails if selection crosses element boundaries
       // Fall back to extracting and wrapping inline
@@ -4470,12 +5400,6 @@ const highlights = {
       mark.setAttribute('data-hl-color', color);
       mark.appendChild(fragment);
       range.insertNode(mark);
-
-      mark.addEventListener('click', (ev) => {
-        ev.stopPropagation();
-        this._activeHighlightId = id;
-        this.showToolbarAtElement(mark);
-      });
     }
   },
 
@@ -4642,7 +5566,7 @@ const highlights = {
 
       this.addMessageToThread(id, 'ai', replyText);
     } catch (err) {
-      this.addMessageToThread(id, 'ai', `⚠️ AI Error: ${err.message}`);
+      this.addMessageToThread(id, 'ai', `⚠️ AI Error: ${escapeHtml(err.message)}`);
     } finally {
       if (spinner) spinner.style.display = 'none';
       this.renderNotesPanel();
@@ -4667,7 +5591,7 @@ const highlights = {
             <span>${m.sender === 'ai' ? '🤖 AI Assistant' : '👤 You'}</span>
             <span>${m.time || ''}</span>
           </div>
-          <div class="margin-thread-text">${m.sender === 'ai' ? marked.parse(m.text) : m.text}</div>
+          <div class="margin-thread-text">${m.sender === 'ai' ? renderMd(m.text) : escapeHtml(m.text)}</div>
         </div>
       `).join('');
 
@@ -4800,6 +5724,15 @@ const highlights = {
     const toolbar = document.getElementById('annotationToolbar');
     const notesBtn = document.getElementById('notesToggleBtn');
     const notesPanelClose = document.getElementById('marginNotesPanelClose');
+
+    // Delegated click on highlighted text — survives innerHTML restores (search, glossary, edits)
+    el.content.addEventListener('click', (e) => {
+      const mark = e.target.closest('mark[data-hl-id]');
+      if (!mark) return;
+      e.stopPropagation();
+      this._activeHighlightId = mark.getAttribute('data-hl-id');
+      this.showToolbarAtElement(mark);
+    });
 
     // Text selection listener
     document.querySelector('.reader').addEventListener('mouseup', (e) => {
@@ -4991,6 +5924,31 @@ const splitScreen = {
       if (el.secondaryPane) el.secondaryPane.classList.add("active");
       el.primaryPane.classList.remove("active");
     }
+  },
+
+  /** Render arbitrary markdown (e.g. an AI translation) into the secondary pane */
+  openSecondaryWithMarkdown(title, markdownText) {
+    if (!state.isSplitMode) this.toggle();
+    state.secondaryKey = null; // virtual content — not a bucket file
+    state.activePane = "primary"; // keep user file actions on the primary pane
+
+    el.contentSecondary.innerHTML = `<div class="split-pane-virtual-header" style="padding:8px 12px;margin-bottom:12px;background:var(--bg-elevated);border:1px solid var(--border);border-radius:var(--radius);font-size:0.85rem;font-weight:700;color:var(--accent)">${escapeHtml(title || "Translated Document")}</div>` + renderMd(markdownText || "");
+    show(el.contentSecondary);
+    show(el.readingStatsBarSecondary, 'flex');
+    updateReadingStatsSecondary(markdownText || "");
+
+    if (window.renderMathInElement) {
+      renderMathInElement(el.contentSecondary, {
+        delimiters: [
+          {left: "$$", right: "$$", display: true},
+          {left: "$", right: "$", display: false}
+        ],
+        throwOnError: false
+      });
+    }
+
+    // Close the AI panel so the side-by-side view is unobstructed
+    closeAiPanel();
   }
 };
 
@@ -5021,6 +5979,7 @@ async function initApp() {
   highlights.init();
   gamification.init();
   autoGlossary.init();
+  glossaryHub.init();
   aiTranslator.init();
   aiPodcast.init();
   topicFocus.init();
@@ -5161,10 +6120,410 @@ async function initApp() {
   }
 
   const savedActiveKey = localStorage.getItem("md-reader-active-key");
-  if (savedActiveKey && state.files.some((f) => f.key === savedActiveKey)) {
+  // Deep-link: ?doc=<key> opens that document directly (shareable/printable URL)
+  const docParam = new URLSearchParams(window.location.search).get("doc");
+  if (docParam && state.files.some((f) => f.key === docParam)) {
+    openFile(docParam);
+  } else if (savedActiveKey && state.files.some((f) => f.key === savedActiveKey)) {
     openFile(savedActiveKey);
+  } else {
+    studyDashboard.render();
   }
 }
+
+/* ================================================================
+   TIER-1 FEATURES
+   1. Reading Position Memory
+   2. SM-2 Spaced Repetition (flashcards)
+   3. Trash & Restore
+   4. Quick Capture (Inbox)
+   5. Study Dashboard
+   ================================================================ */
+
+/* ---------------- 1. Reading Position Memory ---------------- */
+const readingProgress = {
+  _store: null,
+  _load() {
+    if (this._store) return;
+    try { this._store = JSON.parse(localStorage.getItem("md-reader-progress") || "{}"); }
+    catch (e) { this._store = {}; }
+  },
+  set(key, ratio) {
+    this._load();
+    this._store[key] = { ratio: Math.round(ratio * 1000) / 1000, ts: Date.now() };
+    try { localStorage.setItem("md-reader-progress", JSON.stringify(this._store)); } catch (e) {}
+  },
+  get(key) {
+    this._load();
+    return this._store[key] || null;
+  },
+  percent(key) {
+    const p = this.get(key);
+    return p ? Math.round(p.ratio * 100) : 0;
+  }
+};
+
+// Track primary-pane scrolling (throttled)
+(function initReadingTracker() {
+  const readerEl = document.querySelector(".reader");
+  if (!readerEl) return;
+  let scrollSaveTimer = null;
+  readerEl.addEventListener("scroll", () => {
+    clearTimeout(scrollSaveTimer);
+    scrollSaveTimer = setTimeout(() => {
+      if (!state.activeKey || state.activePane !== "primary") return;
+      const max = readerEl.scrollHeight - readerEl.clientHeight;
+      if (max <= 0) return;
+      readingProgress.set(state.activeKey, Math.max(0, Math.min(1, readerEl.scrollTop / max)));
+    }, 400);
+  }, { passive: true });
+})();
+
+/* ---------------- 2. SM-2 Spaced Repetition ---------------- */
+const srsDeck = {
+  _store: null,
+
+  _load() {
+    if (this._store) return;
+    try { this._store = JSON.parse(localStorage.getItem("md-reader-srs") || "{}"); }
+    catch (e) { this._store = {}; }
+  },
+  _save() {
+    try { localStorage.setItem("md-reader-srs", JSON.stringify(this._store)); } catch (e) {}
+  },
+  _todayStr() {
+    return new Date().toISOString().split("T")[0];
+  },
+
+  getSchedule(key, idx) {
+    this._load();
+    return (this._store[key] || {})[idx] || null;
+  },
+
+  isDue(sched) {
+    if (!sched || !sched.due) return true; // new card
+    return sched.due <= this._todayStr();
+  },
+
+  /** SM-2: quality 2 (hard) / 4 (medium) / 5 (easy) */
+  rate(key, idx, quality) {
+    this._load();
+    if (!this._store[key]) this._store[key] = {};
+    let s = this._store[key][idx] || { reps: 0, interval: 0, ef: 2.5, due: null };
+
+    if (quality < 3) {
+      s.reps = 0;
+      s.interval = 1;
+      s.ef = Math.max(1.3, s.ef - 0.2);
+    } else {
+      if (s.reps === 0) s.interval = 1;
+      else if (s.reps === 1) s.interval = 6;
+      else s.interval = Math.min(365, Math.round(s.interval * s.ef));
+      s.ef = Math.max(1.3, s.ef + (0.1 - (5 - quality) * (0.08 + (5 - quality) * 0.02)));
+      s.reps += 1;
+    }
+
+    const dueDate = new Date();
+    dueDate.setDate(dueDate.getDate() + s.interval);
+    s.due = dueDate.toISOString().split("T")[0];
+    s.lastRating = quality;
+
+    this._store[key][idx] = s;
+    this._save();
+    return s;
+  },
+
+  /** Indices of cards due for review today (incl. brand-new cards). */
+  dueIndices(key, deckLength) {
+    this._load();
+    const due = [];
+    for (let i = 0; i < deckLength; i++) {
+      if (this.isDue(this.getSchedule(key, i))) due.push(i);
+    }
+    return due;
+  },
+
+  /** Total due cards across every doc (for the dashboard). */
+  totalDueCount() {
+    this._load();
+    let total = 0;
+    for (const key of Object.keys(this._store)) {
+      const deck = state.aiCache[key];
+      const len = deck && deck.flashcards ? deck.flashcards.length : Object.keys(this._store[key]).length;
+      for (let i = 0; i < len; i++) {
+        if (this.isDue(this._store[key][i])) total++;
+      }
+    }
+    // Also count decks that exist in aiCache but never scheduled
+    for (const key of Object.keys(state.aiCache || {})) {
+      const deck = state.aiCache[key];
+      if (!this._store[key] && deck && deck.flashcards && deck.flashcards.length) {
+        total += deck.flashcards.length; // all new
+      }
+    }
+    return total;
+  },
+
+  /** Key with the most due cards (for "Study now"). */
+  mostDueKey() {
+    this._load();
+    let best = null, bestCount = 0;
+    for (const key of Object.keys(state.aiCache || {})) {
+      const deck = state.aiCache[key];
+      if (!deck || !deck.flashcards || !deck.flashcards.length) continue;
+      const count = this.dueIndices(key, deck.flashcards.length).length;
+      if (count > bestCount) { bestCount = count; best = key; }
+    }
+    return best;
+  },
+
+  /** Study order for a deck: due cards first (stable within groups). */
+  buildStudyOrder(key, length) {
+    const due = new Set(this.dueIndices(key, length));
+    return Array.from({ length }, (_, i) => i).sort((a, b) => (due.has(b) ? 1 : 0) - (due.has(a) ? 1 : 0));
+  }
+};
+
+/* ---------------- 3. Trash & Restore ---------------- */
+const trashUI = {
+  init() {
+    el.trashBtn.addEventListener("click", () => this.open());
+    el.trashModalClose.addEventListener("click", () => hide(el.trashModal));
+    el.trashEmptyBtn.addEventListener("click", () => this.emptyTrash());
+  },
+
+  async open() {
+    show(el.trashModal, 'flex');
+    el.trashFooterStatus.textContent = "";
+    closeSidebar();
+    await this.renderList();
+  },
+
+  async renderList() {
+    el.trashList.innerHTML = `<div style="text-align:center;padding:24px;color:var(--text-dim);font-size:0.85rem">Loading…</div>`;
+    try {
+      const res = await authFetch("/api/trash");
+      const data = await res.json();
+      const items = data.items || [];
+
+      if (!items.length) {
+        el.trashList.innerHTML = `<div style="text-align:center;padding:30px;color:var(--text-dim);font-size:0.85rem">🎉 Trash is empty.<br>Deleted files appear here for restoring.</div>`;
+        el.trashEmptyBtn.disabled = true;
+        return;
+      }
+
+      el.trashEmptyBtn.disabled = false;
+      el.trashList.innerHTML = items.map(item => `
+        <div class="trash-item" data-trash-key="${escapeHtml(item.trashKey)}">
+          <div class="trash-item-info">
+            <div class="trash-item-name" title="${escapeHtml(item.originalKey)}">📄 ${escapeHtml(item.originalKey)}</div>
+            <div class="trash-item-meta">${(item.size / 1024).toFixed(1)} KB • deleted ${item.uploaded ? new Date(item.uploaded).toLocaleDateString() : ''}</div>
+          </div>
+          <div class="trash-item-actions">
+            <button class="lib-mini-btn trash-restore-btn" data-trash-key="${escapeHtml(item.trashKey)}">↩️ Restore</button>
+            <button class="lib-mini-btn warn trash-delete-btn" data-trash-key="${escapeHtml(item.trashKey)}">Delete forever</button>
+          </div>
+        </div>
+      `).join("");
+
+      el.trashList.querySelectorAll(".trash-restore-btn").forEach(btn =>
+        btn.addEventListener("click", () => this.restore(btn.dataset.trashKey)));
+      el.trashList.querySelectorAll(".trash-delete-btn").forEach(btn =>
+        btn.addEventListener("click", () => this.deleteForever(btn.dataset.trashKey)));
+    } catch (err) {
+      el.trashList.innerHTML = `<div style="text-align:center;padding:20px;color:var(--error)">Failed to load trash: ${escapeHtml(err.message)}</div>`;
+    }
+  },
+
+  async restore(trashKey) {
+    el.trashFooterStatus.textContent = "Restoring…";
+    try {
+      const res = await authFetch("/api/trash/restore", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ trashKey })
+      });
+      const data = await res.json();
+      if (!res.ok || data.error) throw new Error(data.error || "Restore failed");
+      el.trashFooterStatus.textContent = `✅ Restored ${data.key}`;
+      await Promise.all([this.renderList(), loadFileList()]);
+    } catch (err) {
+      el.trashFooterStatus.textContent = "❌ " + err.message;
+    }
+  },
+
+  async deleteForever(trashKey) {
+    const item = el.trashList.querySelector(`.trash-item[data-trash-key="${CSS.escape(trashKey)}"] .trash-item-name`);
+    const name = item ? item.textContent.trim() : trashKey;
+    if (!confirm(`Permanently delete "${name}"? This cannot be undone.`)) return;
+    try {
+      const res = await authFetch(`/api/file?key=${encodeURIComponent(trashKey)}&permanent=true`, { method: "DELETE" });
+      const data = await res.json();
+      if (!res.ok || data.error) throw new Error(data.error || "Delete failed");
+      el.trashFooterStatus.textContent = "Deleted permanently.";
+      await this.renderList();
+    } catch (err) {
+      el.trashFooterStatus.textContent = "❌ " + err.message;
+    }
+  },
+
+  async emptyTrash() {
+    if (!confirm("Permanently delete EVERYTHING in the trash? This cannot be undone.")) return;
+    try {
+      const res = await authFetch("/api/trash/empty", { method: "POST" });
+      const data = await res.json();
+      if (!res.ok || data.error) throw new Error(data.error || "Empty trash failed");
+      el.trashFooterStatus.textContent = `🗑️ Trash emptied (${data.deletedCount} items).`;
+      await this.renderList();
+    } catch (err) {
+      el.trashFooterStatus.textContent = "❌ " + err.message;
+    }
+  }
+};
+
+/* ---------------- 4. Quick Capture ---------------- */
+const quickCapture = {
+  init() {
+    el.quickCaptureBtn.addEventListener("click", () => this.open());
+    el.quickCaptureModalClose.addEventListener("click", () => hide(el.quickCaptureModal));
+    el.quickCaptureSubmitBtn.addEventListener("click", () => this.save());
+    el.quickCaptureInput.addEventListener("keydown", (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === "Enter") { e.preventDefault(); this.save(); }
+    });
+  },
+
+  open() {
+    const dateStr = new Date().toISOString().split("T")[0];
+    el.quickCaptureTarget.textContent = `Inbox/${dateStr}.md`;
+    el.quickCaptureInput.value = "";
+    el.quickCaptureStatus.textContent = "";
+    show(el.quickCaptureModal, 'flex');
+    el.quickCaptureInput.focus();
+  },
+
+  async save() {
+    const content = el.quickCaptureInput.value.trim();
+    if (!content) {
+      el.quickCaptureStatus.textContent = "Write something first…";
+      return;
+    }
+    el.quickCaptureSubmitBtn.disabled = true;
+    el.quickCaptureStatus.textContent = "Saving…";
+    try {
+      const res = await authFetch("/api/inbox/append", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ content })
+      });
+      const data = await res.json();
+      if (!res.ok || data.error) throw new Error(data.error || "Save failed");
+      el.quickCaptureStatus.textContent = `✅ Saved to ${data.key}`;
+      gamification.awardXp(5, 'capture');
+      await loadFileList();
+      setTimeout(() => hide(el.quickCaptureModal), 700);
+    } catch (err) {
+      el.quickCaptureStatus.textContent = "❌ " + err.message;
+    } finally {
+      el.quickCaptureSubmitBtn.disabled = false;
+    }
+  }
+};
+
+/* ---------------- 5. Study Dashboard ---------------- */
+const studyDashboard = {
+  render() {
+    // Only render into the empty state (no document open)
+    const recents = JSON.parse(localStorage.getItem("md-reader-recent") || "[]");
+    const due = srsDeck.totalDueCount();
+    const g = gamification.data;
+    const hasActivity = recents.length > 0;
+
+    let continueHtml = "";
+    if (hasActivity) {
+      continueHtml = recents.slice(0, 5).map(key => {
+        const pct = readingProgress.percent(key);
+        const name = key.split('/').pop().replace(/\.(md|markdown)$/i, '');
+        return `
+          <button class="dash-doc-row" data-dash-key="${escapeHtml(key)}" title="${escapeHtml(key)}">
+            <span class="dash-doc-name">📄 ${escapeHtml(name)}</span>
+            <span class="dash-doc-progress"><span class="dash-doc-progress-fill" style="width:${pct}%"></span></span>
+            <span class="dash-doc-pct">${pct}%</span>
+          </button>
+        `;
+      }).join("");
+    } else {
+      continueHtml = `<div style="font-size:0.82rem;color:var(--text-dim);padding:8px 0">No recently opened documents yet — pick a file from the sidebar!</div>`;
+    }
+
+    el.emptyState.innerHTML = `
+      <div class="empty-icon">📖</div>
+      <h2>Welcome back${hasActivity ? '' : ' to MD Reader'}</h2>
+      <p class="empty-hint">${hasActivity ? 'Jump back in, or start something new.' : 'Pick a Markdown file from the sidebar to start reading.'}</p>
+
+      <div class="dash-grid">
+        <div class="dash-card">
+          <div class="dash-card-title">📖 Continue Reading</div>
+          ${continueHtml}
+        </div>
+
+        <div class="dash-card">
+          <div class="dash-card-title">🗂️ Flashcard Reviews</div>
+          <div style="font-size:1.6rem;font-weight:700;color:${due > 0 ? 'var(--accent)' : 'var(--text-dim)'};margin:6px 0">${due} card${due === 1 ? '' : 's'} due today</div>
+          <button id="dashStudyBtn" class="btn-primary" style="align-self:flex-start;padding:6px 14px;font-size:0.8rem;background:var(--accent);border:none;border-radius:var(--radius);color:var(--accent-contrast);cursor:pointer;font-weight:600" ${due === 0 ? 'disabled' : ''}>🧠 Study Now</button>
+        </div>
+
+        <div class="dash-card">
+          <div class="dash-card-title">🏆 Progress</div>
+          <div style="display:flex;justify-content:space-between;font-size:0.85rem;margin-bottom:6px">
+            <span>⚡ Level ${g.level} Scholar</span>
+            <span>🔥 ${g.streak} day streak</span>
+          </div>
+          <div class="dash-xp-bar"><span class="dash-doc-progress-fill" style="width:${Math.min(100, g.xp % 100)}%"></span></div>
+          <div style="font-size:0.72rem;color:var(--text-dim);margin-top:4px">${g.xp} total XP</div>
+        </div>
+
+        <div class="dash-card">
+          <div class="dash-card-title">⚡ Quick Actions</div>
+          <div style="display:flex;flex-wrap:wrap;gap:8px">
+            <button id="dashNewNoteBtn" class="dash-action-btn">📝 New Note</button>
+            <button id="dashUploadBtn" class="dash-action-btn">📤 Upload</button>
+            <button id="dashChatBtn" class="dash-action-btn">💬 AI Chat</button>
+            <button id="dashCaptureBtn" class="dash-action-btn">⚡ Quick Capture</button>
+          </div>
+        </div>
+      </div>
+    `;
+
+    // Bind actions
+    el.emptyState.querySelectorAll(".dash-doc-row").forEach(btn =>
+      btn.addEventListener("click", () => openFile(btn.dataset.dashKey)));
+    const studyBtn = doc_byId("dashStudyBtn");
+    if (studyBtn) studyBtn.addEventListener("click", async () => {
+      const key = srsDeck.mostDueKey();
+      if (key) {
+        await openFile(key);
+        el.flashcardsBtn.click();
+      }
+    });
+    const bind = (id, fn) => { const b = doc_byId(id); if (b) b.addEventListener("click", fn); };
+    bind("dashNewNoteBtn", () => libraryManager.open("note"));
+    bind("dashUploadBtn", () => libraryManager.open("upload"));
+    bind("dashChatBtn", () => openGeneralChat());
+    bind("dashCaptureBtn", () => quickCapture.open());
+  }
+};
+function doc_byId(id) { return el.emptyState.querySelector("#" + id); }
+
+trashUI.init();
+quickCapture.init();
+
+/* ---------------- Global ESC to close any open modal ---------------- */
+document.addEventListener("keydown", (e) => {
+  if (e.key !== "Escape") return;
+  document.querySelectorAll(".modal-overlay").forEach(m => {
+    if (m.style.display && m.style.display !== "none") hide(m);
+  });
+});
 
 initApp();
 

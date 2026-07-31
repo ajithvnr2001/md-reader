@@ -65,14 +65,52 @@ async function listMarkdownFiles(env) {
     listed = await env.MD_BUCKET.list({ ...options, cursor: listed.cursor });
     objects.push(...listed.objects);
   }
-  return objects
-    .filter((o) => o.key.toLowerCase().endsWith(".md"))
+
+  const files = objects
+    .filter((o) => /\.(md|markdown)$/i.test(o.key) && !o.key.startsWith("trash/"))
     .map((o) => ({
       key: o.key,
       size: o.size,
       uploaded: o.uploaded,
     }))
     .sort((a, b) => a.key.localeCompare(b.key));
+
+  // Collect every folder prefix: dirs containing markdown files, plus explicit
+  // empty-folder markers (objects ending in "/.keep"). Trash is excluded.
+  const folderSet = new Set();
+  for (const o of objects) {
+    if (o.key.startsWith("trash/")) continue;
+    if (o.key.endsWith("/.keep")) {
+      folderSet.add(o.key.slice(0, -"/.keep".length));
+    } else if (/\.(md|markdown)$/i.test(o.key)) {
+      const parts = o.key.split("/").slice(0, -1);
+      let acc = "";
+      for (const p of parts) {
+        acc = acc ? `${acc}/${p}` : p;
+        folderSet.add(acc);
+      }
+    }
+  }
+  const folders = [...folderSet].sort();
+  return { files, folders };
+}
+
+/* ---------------- Trash helpers ---------------- */
+/** Move one object to trash/<ts>/<originalKey>. Returns the trash key. */
+async function softDeleteKey(env, key, ts = Date.now()) {
+  const obj = await env.MD_BUCKET.get(key);
+  if (!obj) return null;
+  const trashKey = `trash/${ts}/${key}`;
+  const body = await obj.arrayBuffer();
+  await env.MD_BUCKET.put(trashKey, body);
+  await env.MD_BUCKET.delete(key);
+  return trashKey;
+}
+
+/** Recover the original key from a trash key: trash/<digits>/<originalKey>. */
+function trashKeyToOriginal(trashKey) {
+  const m = trashKey.match(/^trash\/\d+\/(.+)$/);
+  return m ? m[1] : null;
 }
 
 async function getMarkdownText(env, key) {
@@ -82,7 +120,8 @@ async function getMarkdownText(env, key) {
 }
 
 /** Trim long docs so we stay within the model's context window. */
-function truncateForModel(text, maxChars = 12000) {
+const MAX_DOC_CHARS = 24000;
+function truncateForModel(text, maxChars = MAX_DOC_CHARS) {
   if (text.length <= maxChars) return text;
   return text.slice(0, maxChars) + "\n\n[...truncated for AI processing...]";
 }
@@ -268,7 +307,10 @@ function parseJsonResponse(rawText) {
 }
 
 async function runMercury(env, messages, systemInstruction = "", responseMimeType = "text/plain", responseSchema = null) {
-  const apiKey = env.INCEPTION_API_KEY || "***REMOVED-INCEPTION-KEY***";
+  const apiKey = env.INCEPTION_API_KEY;
+  if (!apiKey) {
+    throw new Error("Mercury 2 requires INCEPTION_API_KEY. Set it via: npx wrangler secret put INCEPTION_API_KEY (never hardcode keys in source).");
+  }
   const url = "https://api.inceptionlabs.ai/v1/chat/completions";
 
   const formattedMessages = [];
@@ -440,10 +482,23 @@ const glossarySchema = {
       items: {
         type: "OBJECT",
         properties: {
-          term: { type: "STRING" },
-          definition: { type: "STRING" }
+          term: { type: "STRING", description: "The canonical term as it appears in the document." },
+          definition: { type: "STRING", description: "A clear 1-2 sentence definition in simple English." },
+          aliases: {
+            type: "ARRAY",
+            items: { type: "STRING" },
+            description: "Up to 2 alternative spellings/abbreviations used in the document (e.g. K8s for Kubernetes). Empty array if none."
+          },
+          category: {
+            type: "STRING",
+            description: "Exactly ONE of: acronym, concept, protocol, tool, person, method, formula, other."
+          },
+          importance: {
+            type: "INTEGER",
+            description: "Learning importance for exams: 3 = essential must-know, 2 = important, 1 = nice-to-know."
+          }
         },
-        required: ["term", "definition"]
+        required: ["term", "definition", "aliases", "category", "importance"]
       }
     }
   },
@@ -510,40 +565,84 @@ const podcastSchema = {
   required: ["podcastTitle", "language", "dialogue"]
 };
 
+/** Wrap raw 16-bit little-endian mono PCM bytes in a proper RIFF/WAVE header. */
+function pcmToWav(pcm, sampleRate = 24000, numChannels = 1, bitsPerSample = 16) {
+  const byteRate = (sampleRate * numChannels * bitsPerSample) / 8;
+  const blockAlign = (numChannels * bitsPerSample) / 8;
+  const dataSize = pcm.length;
+  const buffer = new ArrayBuffer(44 + dataSize);
+  const view = new DataView(buffer);
+
+  const writeStr = (offset, str) => {
+    for (let i = 0; i < str.length; i++) view.setUint8(offset + i, str.charCodeAt(i));
+  };
+
+  writeStr(0, "RIFF");
+  view.setUint32(4, 36 + dataSize, true);
+  writeStr(8, "WAVE");
+  writeStr(12, "fmt ");
+  view.setUint32(16, 16, true); // PCM chunk size
+  view.setUint16(20, 1, true); // audio format = PCM
+  view.setUint16(22, numChannels, true);
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, byteRate, true);
+  view.setUint16(32, blockAlign, true);
+  view.setUint16(34, bitsPerSample, true);
+  writeStr(36, "data");
+  view.setUint32(40, dataSize, true);
+  new Uint8Array(buffer, 44).set(pcm);
+  return buffer;
+}
+
+/**
+ * Gemini multi-speaker TTS via the generateContent API.
+ * Returns base64-encoded raw PCM (24kHz, mono, 16-bit) or null on failure.
+ * One automatic retry — the model occasionally returns text tokens causing a 500.
+ */
 async function runGeminiTTS(env, prompt) {
-  const apiKey = env.GEMINI_API_KEY || "";
-  const url = `https://generativelanguage.googleapis.com/v1beta/interactions?key=${apiKey}`;
+  const apiKey = env.GEMINI_API_KEY;
+  if (!apiKey) {
+    console.warn("Gemini TTS skipped: GEMINI_API_KEY not configured");
+    return null;
+  }
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-tts-preview:generateContent?key=${apiKey}`;
 
   const body = {
     model: "gemini-3.1-flash-tts-preview",
-    input: prompt,
-    response_format: { type: "audio" },
-    generation_config: {
-      speech_config: [
-        { speaker: "Alex", voice: "Kore" },
-        { speaker: "Dr. Sam", voice: "Puck" }
-      ]
+    contents: [{ parts: [{ text: prompt }] }],
+    generationConfig: {
+      responseModalities: ["AUDIO"],
+      speechConfig: {
+        multiSpeakerVoiceConfig: {
+          speakerVoiceConfigs: [
+            { speaker: "Alex", voiceConfig: { prebuiltVoiceConfig: { voiceName: "Puck" } } },
+            { speaker: "Dr. Sam", voiceConfig: { prebuiltVoiceConfig: { voiceName: "Kore" } } }
+          ]
+        }
+      }
     }
   };
 
-  try {
-    const res = await fetch(url, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(body)
-    });
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body)
+      });
 
-    if (!res.ok) {
-      console.warn("Gemini TTS endpoint status:", res.status);
-      return null;
-    }
+      if (!res.ok) {
+        console.warn(`Gemini TTS attempt ${attempt + 1} failed, status:`, res.status);
+        continue;
+      }
 
-    const data = await res.json();
-    if (data.output_audio && data.output_audio.data) {
-      return data.output_audio.data;
+      const data = await res.json();
+      const audioData = data.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+      if (audioData) return audioData;
+      console.warn("Gemini TTS attempt", attempt + 1, "returned no audio data");
+    } catch (err) {
+      console.warn("Gemini TTS fetch error:", err.message);
     }
-  } catch (err) {
-    console.warn("Gemini TTS fetch error:", err.message);
   }
   return null;
 }
@@ -577,8 +676,9 @@ export default {
       return assetResponse(iconSvg, "image/svg+xml; charset=utf-8");
     }
 
-    // ---- API: sync AI cache ----
+    // ---- API: sync AI cache (write protected like other mutations) ----
     if (pathname === "/api/ai/cache") {
+      if (!checkAuth(request, env)) return json({ error: "Unauthorized" }, 401);
       if (request.method === "GET") {
         try {
           const obj = await env.MD_BUCKET.get(".ai_cache.json");
@@ -594,7 +694,13 @@ export default {
       if (request.method === "POST") {
         try {
           const body = await request.text();
-          await env.MD_BUCKET.put(".ai_cache.json", body);
+          // Basic sanity: must start with { and stay under a sane size cap
+          if (!body.startsWith("{") || body.length > 5 * 1024 * 1024) {
+            return json({ error: "Invalid cache payload" }, 400);
+          }
+          await env.MD_BUCKET.put(".ai_cache.json", body, {
+            httpMetadata: { contentType: "application/json; charset=utf-8" }
+          });
           return json({ ok: true });
         } catch (err) {
           return json({ error: err.message }, 500);
@@ -605,17 +711,20 @@ export default {
     // ---- API: list files ----
     if (pathname === "/api/list" && request.method === "GET") {
       try {
-        const files = await listMarkdownFiles(env);
-        return json({ files });
+        const { files, folders } = await listMarkdownFiles(env);
+        return json({ files, folders });
       } catch (err) {
         return json({ error: err.message }, 500);
       }
     }
 
-    // ---- API: get raw markdown ----
+    // ---- API: get raw markdown (markdown files only) ----
     if (pathname === "/api/file" && request.method === "GET") {
       const key = url.searchParams.get("key");
       if (!key) return json({ error: "Missing ?key=" }, 400);
+      if (!/\.(md|markdown)$/i.test(key)) {
+        return json({ error: "Only .md / .markdown files can be read with this endpoint" }, 400);
+      }
       const text = await getMarkdownText(env, key);
       if (text === null) return json({ error: "File not found" }, 404);
       return new Response(text, {
@@ -627,37 +736,226 @@ export default {
     if (pathname === "/api/upload" && request.method === "PUT") {
       if (!checkAuth(request, env)) return json({ error: "Unauthorized" }, 401);
       const key = url.searchParams.get("key");
-      if (!key || !key.toLowerCase().endsWith(".md")) {
+      if (!key || !/\.(md|markdown)$/i.test(key)) {
         return json({ error: "Provide ?key=name.md" }, 400);
       }
+      if (key.includes("..")) return json({ error: "Invalid key" }, 400);
+
+      // Uploads can opt out of silent overwrite (editor saves intentionally overwrite)
+      if (url.searchParams.get("overwrite") === "false") {
+        const existing = await env.MD_BUCKET.head(key);
+        if (existing) return json({ error: `"${key}" already exists.`, conflict: true }, 409);
+      }
+
       await env.MD_BUCKET.put(key, request.body);
       return json({ ok: true, key });
     }
 
-    // ---- API: delete file (protected) ----
+    // ---- API: create an (empty) folder, protected ----
+    if (pathname === "/api/folder" && request.method === "POST") {
+      if (!checkAuth(request, env)) return json({ error: "Unauthorized" }, 401);
+      try {
+        const { path } = await request.json();
+        const cleanPath = (path || "").trim().replace(/^\/+|\/+$/g, "");
+        if (!cleanPath || cleanPath.includes("..") || /[\x00-\x1f]/.test(cleanPath)) {
+          return json({ error: "Invalid folder path" }, 400);
+        }
+        const keepKey = `${cleanPath}/.keep`;
+        const existing = await env.MD_BUCKET.head(keepKey);
+        if (existing) return json({ ok: true, path: cleanPath, alreadyExists: true });
+        await env.MD_BUCKET.put(keepKey, "", { httpMetadata: { contentType: "text/plain" } });
+        return json({ ok: true, path: cleanPath });
+      } catch (e) {
+        return json({ error: e.message }, 500);
+      }
+    }
+
+    // ---- API: rename a folder (move all contents), protected ----
+    if (pathname === "/api/folder/rename" && request.method === "POST") {
+      if (!checkAuth(request, env)) return json({ error: "Unauthorized" }, 401);
+      try {
+        const { oldPrefix, newPrefix } = await request.json();
+        const oldP = (oldPrefix || "").trim().replace(/^\/+|\/+$/g, "");
+        const newP = (newPrefix || "").trim().replace(/^\/+|\/+$/g, "");
+        if (!oldP || !newP) return json({ error: "Missing oldPrefix or newPrefix" }, 400);
+        if (oldP.includes("..") || newP.includes("..")) return json({ error: "Invalid path" }, 400);
+        if (oldP === newP) return json({ ok: true, newPrefix: newP });
+        if (newP === oldP || newP.startsWith(oldP + "/")) {
+          return json({ error: "Cannot move a folder inside itself" }, 400);
+        }
+
+        // Refuse to merge into a non-empty destination
+        const targetList = await env.MD_BUCKET.list({ prefix: `${newP}/`, limit: 1 });
+        if (targetList.objects.length > 0) {
+          return json({ error: `Folder "${newP}" already exists and is not empty.` }, 409);
+        }
+
+        // Move every object under oldP (paginated)
+        let moved = 0;
+        let listed = await env.MD_BUCKET.list({ prefix: `${oldP}/` });
+        if (listed.objects.length === 0) return json({ error: "Source folder not found" }, 404);
+        while (true) {
+          for (const obj of listed.objects) {
+            const newKey = `${newP}/${obj.key.slice(oldP.length + 1)}`;
+            const body = await (await env.MD_BUCKET.get(obj.key)).arrayBuffer();
+            await env.MD_BUCKET.put(newKey, body);
+            await env.MD_BUCKET.delete(obj.key);
+            moved++;
+          }
+          if (!listed.truncated) break;
+          listed = await env.MD_BUCKET.list({ prefix: `${oldP}/`, cursor: listed.cursor });
+        }
+        return json({ ok: true, newPrefix: newP, movedCount: moved });
+      } catch (e) {
+        return json({ error: e.message }, 500);
+      }
+    }
+
+    // ---- API: delete file — soft-delete to trash/ by default (protected) ----
     if (pathname === "/api/file" && request.method === "DELETE") {
       if (!checkAuth(request, env)) return json({ error: "Unauthorized" }, 401);
       const key = url.searchParams.get("key");
       if (!key) return json({ error: "Missing ?key=" }, 400);
-      await env.MD_BUCKET.delete(key);
-      return json({ ok: true });
+
+      if (url.searchParams.get("permanent") === "true") {
+        // Hard delete (used from the Trash view)
+        await env.MD_BUCKET.delete(key);
+        return json({ ok: true, permanent: true });
+      }
+
+      const trashKey = await softDeleteKey(env, key);
+      if (!trashKey) return json({ error: "File not found" }, 404);
+      return json({ ok: true, trashKey });
     }
 
-    // ---- API: delete folder (protected) ----
+    // ---- API: delete folder — soft-deletes contents to trash/ (protected) ----
     if (pathname === "/api/folder" && request.method === "DELETE") {
       if (!checkAuth(request, env)) return json({ error: "Unauthorized" }, 401);
       const prefix = url.searchParams.get("prefix");
       if (!prefix) return json({ error: "Missing ?prefix=" }, 400);
-      
+
+      if (url.searchParams.get("permanent") === "true") {
+        const cleanPrefixDel = prefix.endsWith('/') ? prefix : `${prefix}/`;
+        let listedDel = await env.MD_BUCKET.list({ prefix: cleanPrefixDel });
+        let deleted = [];
+        while (true) {
+          for (const obj of listedDel.objects) {
+            await env.MD_BUCKET.delete(obj.key);
+            deleted.push(obj.key);
+          }
+          if (!listedDel.truncated) break;
+          listedDel = await env.MD_BUCKET.list({ prefix: cleanPrefixDel, cursor: listedDel.cursor });
+        }
+        return json({ ok: true, deletedCount: deleted.length, keys: deleted, permanent: true });
+      }
+
       const cleanPrefix = prefix.endsWith('/') ? prefix : `${prefix}/`;
+      const ts = Date.now();
       let listed = await env.MD_BUCKET.list({ prefix: cleanPrefix });
       let deletedKeys = [];
-      for (const obj of listed.objects) {
-        await env.MD_BUCKET.delete(obj.key);
-        deletedKeys.push(obj.key);
+      while (true) {
+        for (const obj of listed.objects) {
+          const trashKey = await softDeleteKey(env, obj.key, ts);
+          if (trashKey) deletedKeys.push(trashKey);
+        }
+        if (!listed.truncated) break;
+        listed = await env.MD_BUCKET.list({ prefix: cleanPrefix, cursor: listed.cursor });
       }
-      
+
       return json({ ok: true, deletedCount: deletedKeys.length, keys: deletedKeys });
+    }
+
+    // ---- API: list trash contents (protected) ----
+    if (pathname === "/api/trash" && request.method === "GET") {
+      if (!checkAuth(request, env)) return json({ error: "Unauthorized" }, 401);
+      try {
+        let listed = await env.MD_BUCKET.list({ prefix: "trash/" });
+        let objects = [...listed.objects];
+        while (listed.truncated) {
+          listed = await env.MD_BUCKET.list({ prefix: "trash/", cursor: listed.cursor });
+          objects.push(...listed.objects);
+        }
+        const items = objects
+          .map((o) => ({
+            trashKey: o.key,
+            originalKey: trashKeyToOriginal(o.key),
+            size: o.size,
+            uploaded: o.uploaded,
+          }))
+          .filter((i) => i.originalKey)
+          .sort((a, b) => a.trashKey.localeCompare(b.trashKey));
+        return json({ items });
+      } catch (err) {
+        return json({ error: err.message }, 500);
+      }
+    }
+
+    // ---- API: restore a trashed item (protected) ----
+    if (pathname === "/api/trash/restore" && request.method === "POST") {
+      if (!checkAuth(request, env)) return json({ error: "Unauthorized" }, 401);
+      try {
+        const { trashKey } = await request.json();
+        if (!trashKey || !trashKey.startsWith("trash/")) return json({ error: "Invalid trashKey" }, 400);
+        const original = trashKeyToOriginal(trashKey);
+        if (!original) return json({ error: "Cannot determine original path" }, 400);
+
+        const existing = await env.MD_BUCKET.head(original);
+        if (existing) return json({ error: `"${original}" already exists — restore would overwrite it.` }, 409);
+
+        const obj = await env.MD_BUCKET.get(trashKey);
+        if (!obj) return json({ error: "Trash item not found" }, 404);
+        const body = await obj.arrayBuffer();
+        await env.MD_BUCKET.put(original, body);
+        await env.MD_BUCKET.delete(trashKey);
+        return json({ ok: true, key: original });
+      } catch (e) {
+        return json({ error: e.message }, 500);
+      }
+    }
+
+    // ---- API: permanently empty the trash (protected) ----
+    if (pathname === "/api/trash/empty" && request.method === "POST") {
+      if (!checkAuth(request, env)) return json({ error: "Unauthorized" }, 401);
+      let listed = await env.MD_BUCKET.list({ prefix: "trash/" });
+      let deleted = 0;
+      while (true) {
+        for (const obj of listed.objects) {
+          await env.MD_BUCKET.delete(obj.key);
+          deleted++;
+        }
+        if (!listed.truncated) break;
+        listed = await env.MD_BUCKET.list({ prefix: "trash/", cursor: listed.cursor });
+      }
+      return json({ ok: true, deletedCount: deleted });
+    }
+
+    // ---- API: quick capture — append a thought to today's inbox note (protected) ----
+    if (pathname === "/api/inbox/append" && request.method === "POST") {
+      if (!checkAuth(request, env)) return json({ error: "Unauthorized" }, 401);
+      try {
+        const { content } = await request.json();
+        const text = (content || "").trim();
+        if (!text) return json({ error: "Empty content" }, 400);
+
+        const now = new Date();
+        const dateStr = now.toISOString().split("T")[0];
+        const timeStr = now.toTimeString().slice(0, 5);
+        const key = `Inbox/${dateStr}.md`;
+
+        let existing = null;
+        const obj = await env.MD_BUCKET.get(key);
+        if (obj) existing = await obj.text();
+
+        const entry = `\n\n## ${timeStr}\n\n${text}\n`;
+        const updated = existing !== null
+          ? existing.replace(/\s*$/, "") + entry
+          : `# 📥 Inbox — ${dateStr}\n${entry}`;
+
+        await env.MD_BUCKET.put(key, updated, { httpMetadata: { contentType: "text/markdown; charset=utf-8" } });
+        return json({ ok: true, key });
+      } catch (e) {
+        return json({ error: e.message }, 500);
+      }
     }
 
     // ---- API: rename file (protected) ----
@@ -670,20 +968,23 @@ export default {
         // Construct new key: keep the folder path, swap the filename
         const parts = oldKey.split('/');
         parts.pop(); // remove old name
-        const newNameClean = newName.toLowerCase().endsWith('.md') ? newName : `${newName}.md`;
+        const newNameClean = /\.(md|markdown)$/i.test(newName) ? newName : `${newName}.md`;
         parts.push(newNameClean);
         const newKey = parts.join('/');
-        
-        if (oldKey === newKey) return json({ ok: true });
-        
-        // Fetch, Put, Delete
+
+        if (oldKey === newKey) return json({ ok: true, newKey });
+
         const oldObj = await env.MD_BUCKET.get(oldKey);
         if (!oldObj) return json({ error: "Original file not found" }, 404);
-        
+
+        // Refuse to overwrite an existing file
+        const existing = await env.MD_BUCKET.head(newKey);
+        if (existing) return json({ error: `A file named "${newKey}" already exists.` }, 409);
+
         const body = await oldObj.arrayBuffer();
         await env.MD_BUCKET.put(newKey, body);
         await env.MD_BUCKET.delete(oldKey);
-        
+
         return json({ ok: true, newKey });
       } catch (e) {
         return json({ error: e.message }, 500);
@@ -700,17 +1001,20 @@ export default {
         const filename = oldKey.split('/').pop();
         const cleanFolder = newFolder.trim().replace(/^\/+|\/+$/g, '');
         const newKey = cleanFolder ? `${cleanFolder}/${filename}` : filename;
-        
-        if (oldKey === newKey) return json({ ok: true });
-        
-        // Fetch, Put, Delete
+
+        if (oldKey === newKey) return json({ ok: true, newKey });
+
         const oldObj = await env.MD_BUCKET.get(oldKey);
         if (!oldObj) return json({ error: "Original file not found" }, 404);
-        
+
+        // Refuse to overwrite an existing file
+        const existing = await env.MD_BUCKET.head(newKey);
+        if (existing) return json({ error: `A file already exists at "${newKey}".` }, 409);
+
         const body = await oldObj.arrayBuffer();
         await env.MD_BUCKET.put(newKey, body);
         await env.MD_BUCKET.delete(oldKey);
-        
+
         return json({ ok: true, newKey });
       } catch (e) {
         return json({ error: e.message }, 500);
@@ -725,7 +1029,7 @@ export default {
         if (text === null) return json({ error: "File not found" }, 404);
         
         const systemInstruction = "You are a helpful study assistant. Summarize the given document in clean bullet points.";
-        const messages = [{ role: "user", content: `Please summarize this document:\n\n${text}` }];
+        const messages = [{ role: "user", content: `Please summarize this document:\n\n${truncateForModel(text)}` }];
         
         const responseText = await runAI(env, { model, messages, systemInstruction, responseMimeType: "application/json", responseSchema: summarizeSchema });
         return json(parseJsonResponse(responseText));
@@ -743,7 +1047,7 @@ export default {
         if (text === null) return json({ error: "File not found" }, 404);
         
         const systemInstruction = `You are a helpful study tutor. When explaining systems, architectures, comparisons, or sequences, always construct a clean, valid Mermaid.js flowchart or graph inside a fenced markdown block (using \`\`\`mermaid) to help the user visualize the explanation. Keep your reply simple and easy to understand. Below is the Markdown document context:
-${text}`;
+${truncateForModel(text)}`;
         const prompt = selection && selection.trim().length > 0
           ? `Explain this specific selection in simple terms: "${selection}"`
           : `Explain the key concepts of this document in simple terms.`;
@@ -765,7 +1069,7 @@ ${text}`;
         if (text === null) return json({ error: "File not found" }, 404);
         
         const systemInstruction = "You generate short study quizzes based on the document. Generate exactly 5 multiple-choice questions.";
-        const messages = [{ role: "user", content: `Please generate a quiz for this document:\n\n${text}` }];
+        const messages = [{ role: "user", content: `Please generate a quiz for this document:\n\n${truncateForModel(text)}` }];
         
         const responseText = await runAI(env, { model, messages, systemInstruction, responseMimeType: "application/json", responseSchema: quizSchema });
         return json(parseJsonResponse(responseText));
@@ -788,7 +1092,7 @@ ${text}`;
           systemInstruction = `You are a helpful study tutor. Below is the Markdown document context for this chat session:
 
 --- START OF DOCUMENT ---
-${text}
+${truncateForModel(text)}
 --- END OF DOCUMENT ---
 
 Help the user study, explain concepts, answer questions, and tutor them on this document.
@@ -817,7 +1121,7 @@ Always return your response structured according to the requested JSON schema.`;
         if (text === null) return json({ error: "File not found" }, 404);
         
         const systemInstruction = "You generate high-quality study flashcards based on the document context. Generate exactly 5 to 8 cards containing a term or question on the front, and a clear, short definition or answer on the back.";
-        const messages = [{ role: "user", content: `Please generate flashcards for this document:\n\n${text}` }];
+        const messages = [{ role: "user", content: `Please generate flashcards for this document:\n\n${truncateForModel(text)}` }];
         
         const responseText = await runAI(env, { model, messages, systemInstruction, responseMimeType: "application/json", responseSchema: flashcardsSchema });
         return json(parseJsonResponse(responseText));
@@ -835,7 +1139,7 @@ Always return your response structured according to the requested JSON schema.`;
         if (text === null) return json({ error: "File not found" }, 404);
         
         const systemInstruction = "You extract and compress all key definitions, code syntax, formulas, commands, and core rules into a highly dense, 1-page print-ready exam cheat sheet.";
-        const messages = [{ role: "user", content: `Please create a 1-page exam cheat sheet for this document:\n\n${text}` }];
+        const messages = [{ role: "user", content: `Please create a 1-page exam cheat sheet for this document:\n\n${truncateForModel(text)}` }];
         
         const responseText = await runAI(env, { model, messages, systemInstruction, responseMimeType: "application/json", responseSchema: cheatsheetSchema });
         return json(parseJsonResponse(responseText));
@@ -872,18 +1176,54 @@ ${docContext}Target Paragraph:
       }
     }
 
-    // ---- API: AI — auto glossary ----
+    // ---- API: AI — auto glossary (rich terms, optional bilingual definitions) ----
     if (pathname === "/api/ai/glossary" && request.method === "POST") {
       try {
-        const { key, model } = await request.json();
+        const { key, model, language } = await request.json();
         const text = await getMarkdownText(env, key);
         if (text === null) return json({ error: "File not found" }, 404);
 
-        const systemInstruction = "You detect and extract 8 to 15 key technical terms, acronyms, and specialized jargon from the document. For each term, provide a clear 1-sentence definition.";
-        const messages = [{ role: "user", content: `Please extract key glossary terms for this document:\n\n${text}` }];
+        const wantsLocal = typeof language === "string" && language.trim() && language.trim().toLowerCase() !== "english";
+        const localLanguage = wantsLocal ? language.trim() : null;
 
-        const responseText = await runAI(env, { model, messages, systemInstruction, responseMimeType: "application/json", responseSchema: glossarySchema });
-        return json(parseJsonResponse(responseText));
+        const schema = JSON.parse(JSON.stringify(glossarySchema));
+        if (localLanguage) {
+          schema.properties.terms.items.properties.definitionLocal = {
+            type: "STRING",
+            description: `The same definition written in natural, modern everyday ${localLanguage}.`
+          };
+          schema.properties.terms.items.required.push("definitionLocal");
+        }
+
+        const messages = [{ role: "user", content: `Please extract key glossary terms for this document:\n\n${truncateForModel(text)}` }];
+
+        // Mercury's "instant" mode can sporadically return empty terms for the
+        // schema-example prompt — retry once with a simplified instruction.
+        const fieldList = `For each term, provide: term, definition, aliases (array, up to 2), category (exactly ONE of acronym|concept|protocol|tool|person|method|formula|other), and importance (integer 1, 2, or 3; 3 = most essential)${localLanguage ? `, and definitionLocal (the same definition in natural, modern everyday ${localLanguage})` : ''}.`;
+
+        let parsed = null;
+        const attempts = (model && (model.includes("mercury") || model.includes("inception")))
+          ? [
+            { schema, instruction: `You detect and extract 8 to 15 key technical terms, acronyms, and specialized jargon from the document. ${fieldList}` },
+            { schema: null, instruction: `You detect and exactly 8 to 15 glossary terms as a JSON object with a single "terms" array. ${fieldList}` }
+          ]
+          : [{ schema, instruction: `You detect and extract 8 to 15 key technical terms, acronyms, and specialized jargon from the document. ${fieldList}` }];
+
+        for (const attempt of attempts) {
+          const responseText = await runAI(env, { model, messages, systemInstruction: attempt.instruction, responseMimeType: "application/json", responseSchema: attempt.schema });
+          parsed = parseJsonResponse(responseText);
+          if (parsed && Array.isArray(parsed.terms) && parsed.terms.length > 0) break;
+        }
+        // Defensive normalization: fill defaults & clamp importance to 1-3
+        parsed.terms = (Array.isArray(parsed.terms) ? parsed.terms : []).map(t => ({
+          term: String(t.term || "").trim(),
+          definition: t.definition || "",
+          aliases: Array.isArray(t.aliases) ? t.aliases.filter(Boolean).slice(0, 2) : [],
+          category: typeof t.category === "string" ? t.category : "other",
+          importance: (t.importance >= 1 && t.importance <= 3) ? Math.round(t.importance) : 2,
+          ...(t.definitionLocal ? { definitionLocal: t.definitionLocal } : {})
+        })).filter(t => t.term);
+        return json(parsed);
       } catch (err) {
         console.error("Glossary error:", err);
         return json({ error: err.message || "AI glossary failed" }, 500);
@@ -906,7 +1246,7 @@ CRITICAL TRANSLATION GUIDELINES FOR ${targetLanguage}:
    - For INDIAN & REGIONAL LANGUAGES (Hindi, Tamil, Telugu, Malayalam, Kannada, Bengali, Marathi, Gujarati, Punjabi): Use natural, conversational, crystal-clear modern phrasing used in daily educational discussions. Avoid obscure textbook jargon.
 3. PRESERVE MARKDOWN & CODE: Keep all Markdown headers (#, ##), bold text (**), bullet lists, LaTeX math formulas ($...$), and code blocks (\`\`\`...\`\`\`) completely intact and untouched.`;
 
-        const messages = [{ role: "user", content: `Please translate the full document below into natural, easy-to-understand modern ${targetLanguage}:\n\n${truncateForModel(text, 12000)}` }];
+        const messages = [{ role: "user", content: `Please translate the full document below into natural, easy-to-understand modern ${targetLanguage}:\n\n${truncateForModel(text)}` }];
 
         const responseText = await runAI(env, { model, messages, systemInstruction, responseMimeType: "application/json", responseSchema: translateSchema });
         return json(parseJsonResponse(responseText));
@@ -916,10 +1256,13 @@ CRITICAL TRANSLATION GUIDELINES FOR ${targetLanguage}:
       }
     }
 
-    // ---- API: Serve saved podcast audio from R2 ----
+    // ---- API: Serve saved podcast audio from R2 (podcasts/ prefix only) ----
     if (pathname === "/api/podcast/audio" && request.method === "GET") {
       const audioKey = url.searchParams.get("key");
       if (!audioKey) return json({ error: "Missing audio key" }, 400);
+      if (!/^podcasts\/[a-zA-Z0-9_\.\-\/]+\.wav$/.test(audioKey)) {
+        return json({ error: "Invalid audio key" }, 400);
+      }
 
       const obj = await env.MD_BUCKET.get(audioKey);
       if (!obj) return json({ error: "Audio not found" }, 404);
@@ -954,7 +1297,7 @@ LANGUAGE & TONE RULES FOR ${language}:
 
 Generate 6 to 12 dialogue turns covering the document thoroughly.`;
 
-        const messages = [{ role: "user", content: `Please create a 2-host audio podcast dialogue script in natural modern ${language} for the following complete document:\n\n${truncateForModel(text, 12000)}` }];
+        const messages = [{ role: "user", content: `Please create a 2-host audio podcast dialogue script in natural modern ${language} for the following complete document:\n\n${truncateForModel(text)}` }];
 
         const responseText = await runAI(env, { model, messages, systemInstruction, responseMimeType: "application/json", responseSchema: podcastSchema });
         const podcastData = parseJsonResponse(responseText);
@@ -967,8 +1310,10 @@ Generate 6 to 12 dialogue turns covering the document thoroughly.`;
 
           if (ttsAudioBase64) {
             const rawPcm = Uint8Array.from(atob(ttsAudioBase64), c => c.charCodeAt(0));
+            // Wrap raw PCM (24kHz mono 16-bit) in a proper WAV container so browsers can play it
+            const wavBuffer = pcmToWav(rawPcm, 24000, 1, 16);
             const storageKey = `podcasts/${key.replace(/[^a-zA-Z0-9_\.-]/g, "_")}_${language}.wav`;
-            await env.MD_BUCKET.put(storageKey, rawPcm, {
+            await env.MD_BUCKET.put(storageKey, wavBuffer, {
               httpMetadata: { contentType: "audio/wav" }
             });
             audioKey = storageKey;

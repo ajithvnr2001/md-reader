@@ -1,4 +1,4 @@
-const CACHE_NAME = 'md-reader-pwa-v3';
+const CACHE_NAME = 'md-reader-pwa-v4';
 const ASSETS_TO_CACHE = [
   '/',
   '/index.html',
@@ -7,7 +7,8 @@ const ASSETS_TO_CACHE = [
   '/manifest.json',
   '/icon.svg',
   'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js',
-  'https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js'
+  'https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js',
+  'https://cdn.jsdelivr.net/npm/dompurify@3.0.8/dist/purify.min.js'
 ];
 
 // Install Event

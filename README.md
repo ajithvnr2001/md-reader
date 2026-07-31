@@ -8,8 +8,10 @@
 
 ### 📚 Document Management & Reader
 - **Cloudflare R2 Bucket Integration**: Browse, create, edit, rename, move, and organize `.md` files in nested folders.
-- **Inline Markdown Editor**: Password-protected inline editor (`ajithvnr2001`) with live preview and R2 auto-save.
-- **Document Export & Download**: Download single `.md` files, bulk export folders as `.zip`, or render to **Print-Ready PDF** and **HTML**.
+- **📚 Unified Library Manager (Upload / New Note / New Folder)**: One modal with 3 tabs — drag-and-drop **whole folders** (nested structure preserved via recursive entry traversal), searchable folder picker, per-file upload progress bars, **duplicate/conflict resolution (Skip / Overwrite-all)**, per-file error retry, skipped-file feedback, and auto-open of uploaded notes. The New Note tab ships **4 starter templates + live markdown preview** (`Ctrl+Enter` to create); folders can be created explicitly (empty folders persist via `.keep` markers) and **renamed from the context menu** with automatic migration of pins, active state and AI cache.
+- **Drop-to-Import**: Drop OS files or folders directly onto any sidebar folder row to import them there.
+- **Inline Markdown Editor**: Client-side unlock prompt with live preview and R2 auto-save. (The prompt is a UI convenience lock — for real write protection enable `REQUIRE_AUTH = "true"` + `UPLOAD_SECRET`, which the frontend then enforces via an auth-key prompt.)
+- **Document Export & Download**: Download single `.md` files, bulk export folders as `.zip`, or render to **Print-Ready PDF** (mode-aware print system: full-app chrome hidden, dark-on-white printable palette; cheat sheets print in a dedicated 2-column layout) and **HTML**. Deep-link any document with `?doc=<key>` for shareable, printable URLs.
 - **In-Page & TOC Navigation**: Floating Table of Contents (TOC) with multi-tier fuzzy anchor matching and smooth scrolling to all document headings.
 - **KaTeX Math & Syntax Highlighting**: Native rendering for LaTeX mathematical equations (`$$...$$`) and code blocks.
 - **PWA & Offline Support**: Service worker caching and web app manifest for a native mobile & desktop PWA experience.
@@ -23,7 +25,7 @@
 - **🗂️ Flashcard Generator**: Produce study flashcards for active recall and revision.
 - **🗺️ Mind Map Generator & Interactive SVG Studio**: Convert document text into a visual, hierarchical node diagram with interactive **Zoom (+/-)**, **Mouse Wheel Scaling**, **Drag-to-Pan**, and **1-Click SVG Export** for presentation slides.
 - **📄 1-Page Exam Cheat Sheet**: Compress all definitions, code syntax, formulas, and rules into a 1-page print-ready reference sheet.
-- **🔍 AI Auto-Glossary**: Extract 8 to 15 key technical terms and display floating AI definition tooltips when hovering or tapping jargon in notes.
+- **🔍 Rich AI Auto-Glossary + Glossary Manager**: Extracts 8–15 key terms with **aliases, category chips (acronym/concept/protocol/tool/person/method/formula), importance ★ ratings**, and optional **bilingual definitions** (17 languages). Highlights **every occurrence** in the reader (alias-aware, handles C#/.NET-style symbols) with per-category colored underlines. Interactive tooltips offer **🔊 Read Aloud**, **💬 Ask AI More**, and **📖 +Dictionary** (writes to your own `Dictionary.md` note). Panel features one-click **Flashcards from Glossary** (feeds the SRS system) and **CSV export**. A global **Glossary Manager** aggregates terms across all documents with per-doc references.
 - **🌐 AI Context-Aware Full Document Translator**: Complete line-by-line document translation into 17+ languages (9 Indian languages: Tamil 🇮🇳, Hindi 🇮🇳, Telugu 🇮🇳, Malayalam 🇮🇳, Kannada 🇮🇳, Bengali 🇮🇳, Marathi 🇮🇳, Gujarati 🇮🇳, Punjabi 🇮🇳 + Spanish 🇪🇸, French 🇫🇷, German 🇩🇪, Japanese 🇯🇵, Chinese 🇨🇳, Portuguese 🇵🇹, Italian 🇮🇹, Russian 🇷🇺). Enforces natural modern everyday phrasing (avoids archaic Senthamizh/formal textbook jargon), preserves code/math blocks, provides everyday context vocabulary tables, and supports **1-Click Side-by-Side Dual Reader View**.
 - **🎙️ NotebookLM-Style 2-Host Audio Podcast Generator**: Converts complete documents into a 2-host spoken study podcast featuring **Alex (Host 🎙️)** and **Dr. Sam (Expert 🧠)**. Supports Indian languages (Tamil 🇮🇳, Hindi 🇮🇳, Telugu 🇮🇳, etc.), multi-speaker `gemini-3.1-flash-tts-preview` audio generation, permanent R2 audio storage, and interactive scrolling transcript synchronization.
 - **💬 Paragraph Discussion Threads with `@AI`**: Leave comments on any highlighted section and tag `@AI` to discuss, explain, or debate points directly in the margin thread.
@@ -35,6 +37,13 @@
 - **📚 Multi-Document Comparative Synthesis**: Select multiple files in the sidebar and trigger cross-document comparative analysis and concept mapping powered by your chosen AI model.
 
 ---
+
+### 📊 Study Productivity
+- **📊 Study Dashboard**: Home screen with Continue Reading (per-doc progress bars), Flashcards due today, XP/streak snapshot, and Quick Actions.
+- **📍 Reading Position Memory**: Automatically remembers and restores your scroll position per document, with progress tracking across the dashboard.
+- **🧠 Spaced Repetition (SM-2)**: Flashcard Easy/Medium/Hard ratings drive a real SM-2 scheduling algorithm — due-today review queue, hard cards re-queued in-session, next-review badges.
+- **🗑️ Trash & Restore**: Soft-delete for files and folders with a Trash view, one-click restore (conflict-safe), delete-forever, and empty-trash.
+- **⚡ Quick Capture**: Floating ⚡ button anywhere → append a timestamped thought to today's `Inbox/YYYY-MM-DD.md`.
 
 ### 🎮 Gamification & Active Reading Tools
 - **🎮 Gamified Study Streaks & XP System**: Earn XP for reading, completing Pomodoros, taking quizzes, and annotating. Unlock achievement badges (Page Turner, On Fire, Focus Master, Quiz Champion, Annotator) and level up.
@@ -126,19 +135,21 @@ md-reader/
    bucket_name = "your-r2-bucket-name"
 
    [vars]
-   AI_MODEL = "gemini-3.5-flash-lite"
-   INCEPTION_API_KEY = "your_inception_api_key_here"
    REQUIRE_AUTH = "false"
    ```
 
-4. **Set API Key Secrets**:
+4. **Set API Key Secrets** (never commit them to git):
    ```bash
-   # Google Gemini API Key (required)
+   # Google Gemini API Key (required for Gemini 3.5 + TTS podcasts)
    npx wrangler secret put GEMINI_API_KEY
 
-   # Inception Labs API Key (for Mercury 2 model — optional, can also be set in wrangler.toml [vars])
+   # Inception Labs API Key (required for Mercury 2)
    npx wrangler secret put INCEPTION_API_KEY
+
+   # Only needed if REQUIRE_AUTH = "true"
+   npx wrangler secret put UPLOAD_SECRET
    ```
+   For local development, copy `.dev.vars.example` to `.dev.vars` and fill in your keys (`.dev.vars` is git-ignored).
 
 5. **Run Locally**:
    ```bash
@@ -159,8 +170,11 @@ npm run deploy
 
 ## 🔒 Security & Privacy
 
-- **No Hardcoded Credentials**: API keys are supplied securely via Cloudflare Worker Secrets (`env.GEMINI_API_KEY`, `env.INCEPTION_API_KEY`).
-- **Optional Authorization**: Write endpoints (upload, delete, rename) can be protected by setting `REQUIRE_AUTH = "true"` and defining `UPLOAD_SECRET`.
+- **No Hardcoded Credentials**: API keys are supplied securely via Cloudflare Worker Secrets (`env.GEMINI_API_KEY`, `env.INCEPTION_API_KEY`) and are never committed to the repository.
+- **XSS Hardening**: All AI-generated and user-provided content is sanitized with [DOMPurify](https://github.com/cure53/DOMPurify) before rendering; file/folder names are HTML-escaped and all tree interactions use event delegation instead of inline handlers.
+- **Restricted File Serving**: `/api/file` serves only `.md`/`.markdown` keys and `/api/podcast/audio` is restricted to the `podcasts/` prefix, so internal objects like `.ai_cache.json` cannot be downloaded.
+- **Overwrite Protection**: Rename and move operations refuse to overwrite an existing file (HTTP 409).
+- **Optional Authorization**: Write endpoints (upload, edit save, delete, rename, move, cache sync) can be protected by setting `REQUIRE_AUTH = "true"` and defining `UPLOAD_SECRET`. When enabled, the frontend automatically prompts for the `X-Auth-Key` once and stores it in `localStorage`.
 - **Client-Side Privacy**: Highlights, notes, model preferences, and local chat cache are stored locally in the user's browser `localStorage`.
 
 ---

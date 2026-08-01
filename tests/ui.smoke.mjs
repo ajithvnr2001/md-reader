@@ -73,6 +73,11 @@ check("⋮ More menu toggles and contains moved controls", () => {
       && doc.getElementById("speechRateSelect") !== null;
 });
 
+check("⋮ More menu portals to <body> position:fixed (mobile overflow clip fix)", () => {
+  const m = doc.getElementById("topbarMoreMenu");
+  return m.parentNode === doc.body && m.style.position === "fixed" && m.style.zIndex === "10001";
+});
+
 check("clicking a more-menu row forwards to its inner button", () => {
   let hit = false;
   const btn = doc.getElementById("settingsBtn");
@@ -153,6 +158,12 @@ check("AI dropup opens and item click closes it", () => {
   const first = doc.getElementById("aiMoreMenu").style.display === "block";
   click(doc.getElementById("mindMapBtn") && doc.querySelector(".ai-more-item"));
   return first; // menu closed state verified next
+});
+
+check("AI dropup portals to <body> position:fixed (mobile overflow clip fix)", () => {
+  click(doc.getElementById("aiMoreBtn"));
+  const m = doc.getElementById("aiMoreMenu");
+  return m.style.display === "block" && m.parentNode === doc.body && m.style.position === "fixed" && m.style.zIndex === "10001";
 });
 
 /* ---------- Skeleton ---------- */

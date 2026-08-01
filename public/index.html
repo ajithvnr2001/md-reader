@@ -240,6 +240,16 @@
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
           </button>
           <span id="breadcrumbProgress" class="breadcrumb-progress" title="Reading progress"></span>
+          <button id="pulseRingChip" class="pulse-ring-chip" title="Today's study goal ring" aria-label="Today's study goal"></button>
+        </div>
+
+        <!-- Pulse commitment prompt -->
+        <div id="pulsePromiseBanner" class="pulse-promise-banner" style="display:none">
+          <span id="pulsePromiseText"></span>
+          <span style="display:flex; gap:6px; flex-shrink:0">
+            <button id="pulsePromiseYes" class="lib-mini-btn" style="background:var(--accent); color:var(--accent-contrast); border:none">🤝 Yes, promise</button>
+            <button id="pulsePromiseNo" class="lib-mini-btn">Later</button>
+          </span>
         </div>
         <div id="readProgressStrip" class="read-progress-strip" style="display:none"><span id="readProgressFill"></span></div>
 
@@ -961,6 +971,15 @@
           <button id="tourSkipBtn" class="tour-skip-btn">Skip</button>
           <button id="tourNextBtn" class="tour-next-btn">Next</button>
         </div>
+      </div>
+    </div>
+
+    <!-- Pulse milestone ceremony modal -->
+    <div id="pulseMilestoneModal" class="pulse-milestone-modal" style="display:none">
+      <div class="pulse-milestone-card">
+        <div id="pulseMilestoneEmoji" style="font-size:3rem; line-height:1">🏆</div>
+        <div id="pulseMilestoneTitle" style="font-size:1.3rem; font-weight:800; color:var(--text); margin:10px 0 4px">Milestone!</div>
+        <div id="pulseMilestoneSub" style="font-size:0.85rem; color:var(--text-dim)"></div>
       </div>
     </div>
 

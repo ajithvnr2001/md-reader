@@ -401,6 +401,11 @@ function resetActiveDocView() {
   hide(el.readingStatsBarSecondary);
   hide(el.editorContainer);
   show(el.emptyState);
+  // End-of-session ceremony (Pulse session loop) — then dashboard
+  if (typeof studyPulse === "object" && studyPulse.endSession) {
+    setTimeout(() => studyPulse.endSession(false), 100);
+  }
+  window.dispatchEvent(new CustomEvent("md-reader:session-ended"));
   if (typeof uiRefresh === "object" && uiRefresh.hideDocChrome) uiRefresh.hideDocChrome();
   if (typeof studyDashboard === "object" && studyDashboard.render) studyDashboard.render();
   // Auto-exit Zen Mode — no doc = no distraction to hide, and nav must return
@@ -1368,6 +1373,13 @@ async function openFile(key) {
       highlights.restoreHighlights();
       // Document chrome: breadcrumb path + read-progress strip
       uiRefresh.updateDocChrome(key);
+      
+      // Pulse session loop: auto-start deep-work tracking + prompt a promise (commitment device)
+      if (typeof studyPulse === "object" && studyPulse.startSession) {
+        studyPulse.startSession(key);
+        if (studyPulse.maybePromptPromise) studyPulse.maybePromptPromise(key);
+        if (studyPulse.updateRingChip) studyPulse.updateRingChip();
+      }
       
       // Per-doc auto-fullscreen preference
       if (typeof window.__fs === "object" && window.__fs.isAutoDoc && window.__fs.isAutoDoc(key) && !window.__fs.isActive()) {
@@ -4244,7 +4256,15 @@ const gamification = {
       if (diffDays === 1) {
         this.data.streak++;
       } else if (diffDays > 1) {
-        this.data.streak = 1;
+        // Loss-aversion: streak freezes auto-consume BEFORE the streak dies (1 day/week)
+        const dayGap = diffDays - 1;
+        const frozen = (typeof studyPulse === "object" && studyPulse.consumesFor)
+          ? studyPulse.consumesFor(Math.min(dayGap, 1))
+          : 0;
+        if (frozen === 0) this.data.streak = 1;
+        // else streak preserved (freeze covered one missed day)
+      } else if (diffDays === 0) {
+        // same day, no-op
       }
       this.data.lastActiveDate = today;
       this.save();
@@ -5463,18 +5483,20 @@ const pomodoro = {
     this.pause();
     this.playAlertSound();
     
-    let message = "Study session complete! Time for a break.";
-    if (this.mode !== "study") {
-      message = "Break over! Time to focus.";
-    }
-    
+    // Reward ceremony — finishing a session is a REAL achievement (+XP, confetti)
     if (this.mode === "study") {
+      gamification.awardXp(30, 'pomodoro');
+      if (typeof pulseConfetti === "function") pulseConfetti(60);
+      if (typeof pulseCelebrate === "function") {
+        pulseCelebrate("⏱️", "Pomodoro Complete!", `+30 XP · Focus streak building. Break earned.`);
+      } else {
+        alert("⏱️ Pomodoro complete! +30 XP — take a break.");
+      }
       this.switchMode("short");
     } else {
+      quickToast("⏱️ Break over — re-engage.");
       this.switchMode("study");
     }
-    
-    alert(`⏱️ Pomodoro Timer: ${message}`);
   },
   
   playAlertSound() {
@@ -6224,6 +6246,7 @@ async function initApp() {
   topicFocus.init();
   splitScreen.init();
   uiRefresh.init();
+  if (typeof studyPulse === "object" && studyPulse.init) studyPulse.init();
 
   // Global event delegation for in-page anchor links in the Markdown content
   el.content.addEventListener('click', (e) => {
@@ -6411,6 +6434,40 @@ const focusTrap = {
   }
 };
 
+/* ---------- Shared popover portal (escapes overflow-clipped containers) ---------- */
+function positionPortal(menuEl, anchorEl, { above = false, width = 240 } = {}) {
+  document.body.appendChild(menuEl); // move out of any overflow:hidden ancestor
+  menuEl.style.position = "fixed";
+  menuEl.style.zIndex = "10001";
+  menuEl.style.width = "auto";
+  menuEl.style.minWidth = Math.min(width, window.innerWidth - 16) + "px";
+  menuEl.style.maxWidth = (window.innerWidth - 16) + "px";
+  menuEl.style.display = "block";
+
+  const rect = anchorEl.getBoundingClientRect();
+  const menuH = menuEl.offsetHeight || 300;
+  const vw = window.innerWidth, vh = window.innerHeight;
+
+  // Horizontal: right-align to the button, clamped inside the viewport
+  let right = Math.max(8, vw - rect.right);
+  if (rect.right - menuEl.offsetWidth < 8) right = Math.min(right, vw - 16);
+  menuEl.style.right = right + "px";
+  menuEl.style.left = "auto";
+
+  // Vertical: honor 'above' unless there isn't room, else flip
+  const roomBelow = vh - rect.bottom - 10;
+  const roomAbove = rect.top - 10;
+  const openAbove = above ? roomAbove >= 170 || roomAbove >= roomBelow : roomBelow < menuH && roomAbove > roomBelow;
+  if (openAbove) {
+    menuEl.style.bottom = (vh - rect.top + 6) + "px";
+    menuEl.style.top = "auto";
+  } else {
+    menuEl.style.top = (rect.bottom + 6) + "px";
+    menuEl.style.bottom = "auto";
+  }
+}
+function closePortal(menuEl) { menuEl.style.display = "none"; }
+
 const uiRefresh = {
   init() {
     /* ---------- ⋮ More tools menu ---------- */
@@ -6418,7 +6475,11 @@ const uiRefresh = {
       el.topbarMoreBtn.addEventListener("click", (e) => {
         e.stopPropagation();
         const open = el.topbarMoreMenu.style.display === "block";
-        el.topbarMoreMenu.style.display = open ? "none" : "block";
+        if (open) {
+          closePortal(el.topbarMoreMenu);
+        } else {
+          positionPortal(el.topbarMoreMenu, el.topbarMoreBtn, { width: 240 });
+        }
       });
       // Row clicks forward to the row's real button
       el.topbarMoreMenu.querySelectorAll(".more-menu-row").forEach(row => {
@@ -6431,9 +6492,12 @@ const uiRefresh = {
       });
       document.addEventListener("click", (e) => {
         if (!el.topbarMoreMenu.contains(e.target) && e.target !== el.topbarMoreBtn && !el.topbarMoreBtn.contains(e.target)) {
-          hide(el.topbarMoreMenu);
+          closePortal(el.topbarMoreMenu);
         }
       });
+      // Close on scroll/resize so the fixed menu never detaches from its button
+      window.addEventListener("scroll", () => { if (el.topbarMoreMenu.style.display === "block") closePortal(el.topbarMoreMenu); }, { passive: true });
+      window.addEventListener("resize", () => { if (el.topbarMoreMenu.style.display === "block") closePortal(el.topbarMoreMenu); });
     }
 
     /* ---------- ⚙️ Settings drawer ---------- */
@@ -6471,16 +6535,23 @@ const uiRefresh = {
     if (el.aiMoreBtn && el.aiMoreMenu) {
       el.aiMoreBtn.addEventListener("click", (e) => {
         e.stopPropagation();
-        el.aiMoreMenu.style.display = el.aiMoreMenu.style.display === "block" ? "none" : "block";
+        const open = el.aiMoreMenu.style.display === "block";
+        if (open) {
+          closePortal(el.aiMoreMenu);
+        } else {
+          positionPortal(el.aiMoreMenu, el.aiMoreBtn, { above: true, width: 210 });
+        }
       });
       el.aiMoreMenu.querySelectorAll(".ai-more-item").forEach(btn => {
-        btn.addEventListener("click", () => hide(el.aiMoreMenu));
+        btn.addEventListener("click", () => closePortal(el.aiMoreMenu));
       });
       document.addEventListener("click", (e) => {
         if (!el.aiMoreMenu.contains(e.target) && e.target !== el.aiMoreBtn && !el.aiMoreBtn.contains(e.target)) {
-          hide(el.aiMoreMenu);
+          closePortal(el.aiMoreMenu);
         }
       });
+      window.addEventListener("scroll", () => { if (el.aiMoreMenu.style.display === "block") closePortal(el.aiMoreMenu); }, { passive: true });
+      window.addEventListener("resize", () => { if (el.aiMoreMenu.style.display === "block") closePortal(el.aiMoreMenu); });
     }
 
     /* ---------- Copy deep link ---------- */
@@ -6582,6 +6653,403 @@ const uiRefresh = {
 
 
 /* ================================================================
+   STUDY PULSE — behavioral engagement engine
+   Auto session loop · daily goal ring · streak freeze · promises ·
+   reward ceremonies · self-competition · PWA badge
+   ================================================================ */
+
+/* ---------------- Confetti reward burst ---------------- */
+function pulseConfetti(count = 40) {
+  try {
+    const canvas = document.createElement("canvas");
+    canvas.style.cssText = "position:fixed;inset:0;pointer-events:none;z-index:99999";
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+    document.body.appendChild(canvas);
+    const ctx = canvas.getContext("2d");
+    if (!ctx) { canvas.remove(); return; }
+    const colors = ["#7c6bf5", "#10b981", "#f59e0b", "#f43f5e", "#38bdf8", "#fbbf24"];
+    const parts = Array.from({ length: count }, () => ({
+      x: canvas.width / 2 + (Math.random() - 0.5) * 120,
+      y: canvas.height / 3,
+      vx: (Math.random() - 0.5) * 9,
+      vy: -(Math.random() * 9 + 3),
+      r: Math.random() * 5 + 2.5,
+      color: colors[Math.floor(Math.random() * colors.length)],
+      rot: Math.random() * Math.PI,
+      vr: (Math.random() - 0.5) * 0.22
+    }));
+    let frame = 0;
+    (function draw() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      parts.forEach(p => {
+        p.x += p.vx; p.y += p.vy; p.vy += 0.28; p.rot += p.vr;
+        ctx.save();
+        ctx.translate(p.x, p.y);
+        ctx.rotate(p.rot);
+        ctx.fillStyle = p.color;
+        ctx.fillRect(-p.r / 2, -p.r / 2, p.r, p.r);
+        ctx.restore();
+      });
+      frame++;
+      if (frame < 90) requestAnimationFrame(draw);
+      else canvas.remove();
+    })();
+  } catch (e) { /* decorative only — never break the flow */ }
+}
+
+/* ---------------- Milestone ceremony modal ---------------- */
+function pulseCelebrate(emoji, title, sub, useConfetti = true) {
+  if (useConfetti) pulseConfetti();
+  const m = document.getElementById("pulseMilestoneModal");
+  if (!m) return;
+  document.getElementById("pulseMilestoneEmoji").textContent = emoji;
+  document.getElementById("pulseMilestoneTitle").textContent = title;
+  document.getElementById("pulseMilestoneSub").textContent = sub || "";
+  show(m, 'flex');
+  setTimeout(() => hide(m), 2600);
+  gamification.awardXp(5, 'milestone');
+}
+
+const studyPulse = {
+  DEFAULT_GOAL_MIN: 20,
+  data: null,
+  session: null,      // { key, startTime, seconds, intervalId, lastActivity }
+  freezWeekStart: null,
+
+  /* ---------------- storage ---------------- */
+  load() {
+    try { this.data = JSON.parse(localStorage.getItem("md-reader-pulse") || "null"); } catch (e) {}
+    if (!this.data) {
+      this.data = {
+        dailyGoalMin: this.DEFAULT_GOAL_MIN,
+        today: null,
+        todayMinutes: 0,
+        history: {},            // { 'YYYY-MM-DD': minutes }
+        bestDayMin: 0,
+        promises: {},           // { docKey: promisedAtDateStr }
+        freezesLeft: 2,
+        freezesWeek: null
+      };
+    }
+    this.rollover();
+    return this.data;
+  },
+
+  save() {
+    try { localStorage.setItem("md-reader-pulse", JSON.stringify(this.data)); } catch (e) {}
+  },
+
+  /** Daily rollover + weekly freeze refill (runs idempotently) */
+  rollover() {
+    const now = new Date();
+    const today = now.toISOString().split("T")[0];
+
+    if (this.data.today !== today) {
+      if (this.data.today && this.data.todayMinutes > 0) {
+        this.data.history[this.data.today] = Math.round(this.data.todayMinutes);
+        this.data.bestDayMin = Math.max(this.data.bestDayMin, Math.round(this.data.todayMinutes));
+        // Prune history beyond 60 days
+        const keys = Object.keys(this.data.history).sort();
+        while (keys.length > 60) { delete this.data.history[keys.shift()]; }
+      }
+      this.data.today = today;
+      this.data.todayMinutes = 0;
+    }
+
+    // Weekly freeze refill on Mondays
+    const weekId = this.isoWeek(now);
+    if (this.data.freezesWeek !== weekId) {
+      this.data.freezesWeek = weekId;
+      this.data.freezesLeft = 2;
+    }
+    this.save();
+  },
+
+  isoWeek(d) {
+    const date = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+    const dayNum = date.getUTCDay() || 7;
+    date.setUTCDate(date.getUTCDate() + 4 - dayNum);
+    const yearStart = new Date(Date.UTC(date.getUTCFullYear(), 0, 1));
+    return `${date.getUTCFullYear()}-W${Math.ceil((((date - yearStart) / 86400000) + 1) / 7)}`;
+  },
+
+  /* ---------------- streak freeze consumption (called by gamification) ---------------- */
+  consumesFor(lostDays) {
+    this.load();
+    const used = Math.min(lostDays, this.data.freezesLeft);
+    if (used > 0) {
+      this.data.freezesLeft -= used;
+      this.save();
+      setTimeout(() => quickToast(`🧊 Streak freeze saved your flame (kept 1)!`), 1200);
+    }
+    return used;
+  },
+
+  /* ---------------- ring + chip UI ---------------- */
+  todayGoalPct() {
+    this.load();
+    return Math.min(100, Math.round((this.data.todayMinutes / this.data.dailyGoalMin) * 100));
+  },
+
+  weekMinutes() {
+    this.load();
+    const now = new Date();
+    const day = now.getDay() || 7;
+    const monday = new Date(now);
+    monday.setDate(now.getDate() - (day - 1));
+    let total = 0;
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(monday);
+      d.setDate(monday.getDate() + i);
+      const k = d.toISOString().split("T")[0];
+      total += this.data.history[k] || 0;
+      if (k === this.data.today) total += this.data.todayMinutes;
+    }
+    return Math.round(total);
+  },
+
+  updateRingChip() {
+    const chip = document.getElementById("pulseRingChip");
+    if (!chip) return;
+    this.load();
+    const done = this.data.todayMinutes;
+    const goal = this.data.dailyGoalMin;
+    chip.textContent = "";
+    chip.title = `Today's study goal: ${Math.floor(done)}/${goal} min`;
+    // Tiny SVG ring
+    const done2 = Math.min(1, done / goal);
+    const r = 7, c = 2 * Math.PI * r;
+    chip.innerHTML = `
+      <svg width="18" height="18" viewBox="0 0 18 18">
+        <circle cx="9" cy="9" r="${r}" stroke="var(--border)" stroke-width="2.5" fill="none"/>
+        <circle cx="9" cy="9" r="${r}" stroke="${done >= goal ? "#10b981" : "var(--accent)"}" stroke-width="2.5" fill="none"
+                stroke-dasharray="${(done2 * c).toFixed(1)} ${c.toFixed(1)}" stroke-linecap="round" transform="rotate(-90 9 9)"/>
+      </svg>
+      <span>${Math.floor(done)}/${goal}m</span>
+    `;
+    chip.classList.toggle("done", done >= goal);
+  },
+
+  updateBadge() {
+    this.load();
+    try {
+      const remainingMin = Math.max(0, Math.ceil(this.data.dailyGoalMin - this.data.todayMinutes));
+      const n = Math.min(99, remainingMin > 0 ? remainingMin : 0);
+      if (navigator.setAppBadge) {
+        if (n > 0) navigator.setAppBadge(n); else navigator.clearAppBadge();
+      }
+    } catch (e) {}
+  },
+
+  /* ---------------- the session loop ---------------- */
+  startSession(key) {
+    this.load();
+    if (this.session && this.session.key === key) return; // already running for this doc
+    this.endSession(true);     // flush any previous session silently
+    const intervalId = setInterval(() => this.tick(), 1000);
+    this.session = {
+      key,
+      startTime: Date.now(),
+      seconds: 0,
+      intervalId,
+      lastActivity: Date.now(),
+      committedMinutes: 0
+    };
+    this.updateRingChip();
+  },
+
+  /** one heart-beat: count only when the tab is visible AND something happened recently */
+  tick() {
+    if (!this.session) return;
+    const s = this.session;
+    const idle = Date.now() - s.lastActivity;
+    const hidden = document.hidden === true;
+    if (hidden || idle > 180000) return; // paused silently
+    s.seconds++;
+    if (s.seconds % 30 === 0) {
+      this.commitMinutes(0.5); // earn + commit every 30s — nudges the ring live
+    }
+    if (s.seconds % 150 === 0) this.updateRingChip();
+  },
+
+  activityPing() {
+    if (this.session) this.session.lastActivity = Date.now();
+  },
+
+  /** Commit fractional minutes into the daily counter + XP + ring */
+  commitMinutes(delta) {
+    if (!this.session) return;
+    this.load();
+    const prevGoalMet = this.data.todayMinutes >= this.data.dailyGoalMin;
+    this.data.todayMinutes += delta;
+    this.session.committedMinutes += delta;
+    this.save();
+
+    // XP economy: ~2 XP per minute of deep reading (rounded on whole minutes)
+    const wholeMinsSoFar = Math.floor(this.data.todayMinutes);
+    if (wholeMinsSoFar > (this._lastWholeMin || 0)) {
+      gamification.awardXp(2, 'read-session');
+      this._lastWholeMin = wholeMinsSoFar;
+    }
+
+    this.updateRingChip();
+    this.updateBadge();
+
+    // Goal just achieved → ceremony
+    if (!prevGoalMet && this.data.todayMinutes >= this.data.dailyGoalMin) {
+      pulseCelebrate("🎯", "Daily Goal Crushed!", `${this.data.dailyGoalMin}+ minutes of focused study today. Legend.`);
+      pulseConfetti(60);
+    }
+  },
+
+  /** Ends the session; shows the summary ceremony for meaningful sessions (>=2 min) */
+  endSession(silent = false) {
+    const s = this.session;
+    if (!s) return null;
+    clearInterval(s.intervalId);
+    const totalSeconds = Math.floor(s.seconds);
+    const mins = Math.max(0, Math.round(totalSeconds / 60));
+    this.session = null;
+    this._lastWholeMin = 0;
+
+    // Commit the leftover tail
+    const tail = (totalSeconds / 60) - (s.committedMinutes || 0);
+    if (tail > 0.2) this.commitMinutes(tail);
+
+    this.updateRingChip();
+    this.updateBadge();
+
+    if (!silent && mins >= 2) {
+      const docName = s.key.split("/").pop().replace(/\.(md|markdown)$/i, "");
+      this._sessionEndDoc = s.key;
+      pulseCelebrate(
+        "⚡",
+        `${mins}-min Deep Work`,
+        `"${docName}" · today at ${Math.round(this.data.todayMinutes)}/${this.data.dailyGoalMin} min`,
+        mins >= this.data.dailyGoalMin
+      );
+      return { mins, key: s.key };
+    }
+    return null;
+  },
+
+  /* ---------------- promises (commitment devices) ---------------- */
+  hasPromise(key) { this.load(); return !!this.data.promises[key]; },
+  addPromise(key) { this.load(); this.data.promises[key] = new Date().toISOString().split("T")[0]; this.save(); this.updateRingChip(); },
+  resolvePromise(key) {
+    this.load();
+    delete this.data.promises[key];
+    this.save();
+    pulseCelebrate("🤝", "Promise Kept!", "You promised you'd finish it — and you did.");
+  },
+  owedPromises() {
+    this.load();
+    return Object.entries(this.data.promises)
+      .map(([key, since]) => ({ key, since, pct: (typeof readingProgress === 'object' ? readingProgress.percent(key) : 0) }))
+      .sort((a, b) => a.pct - b.pct);
+  },
+  maybeCompletePromise(key, pct) {
+    this.load();
+    if (this.data.promises[key] && pct >= 95) {
+      this.resolvePromise(key);
+      if (typeof studyDashboard === "object" && studyDashboard.render && el.emptyState && el.emptyState.style.display !== "none") {
+        studyDashboard.render();
+      }
+    }
+  },
+
+  /* ---------------- banner prompts ---------------- */
+  maybePromptPromise(key) {
+    this.load();
+    if (this.data.promises[key]) return; // already promised
+    const banner = document.getElementById("pulsePromiseBanner");
+    if (!banner) return;
+    const docName = key.split('/').pop().replace(/\.(md|markdown)$/i, '');
+    document.getElementById("pulsePromiseText").textContent = `🤝 Plan to finish "${docName}" today? We'll hold you to it.`;
+    show(banner, 'flex');
+    setTimeout(() => { try { if (banner.style.display !== "none") hide(banner); } catch (e) {} }, 8000);
+  },
+
+  /* ---------------- dashboard hero ---------------- */
+  heroHtml() {
+    this.load();
+    const pct = this.todayGoalPct();
+    const fw = this.data.freezesLeft;
+    const weekMin = this.weekMinutes();
+    const weeklyGoal = this.data.dailyGoalMin * 7;
+    const weekPct = Math.min(100, Math.round((weekMin / weeklyGoal) * 100));
+    const day7 = Math.max(...Object.values(this.data.history).slice(-7), 0);
+    const todayMin = Math.round(this.data.todayMinutes);
+    const lvl = gamification.data ? gamification.data.level : 1;
+    const xpToNext = 100 - ((gamification.data ? gamification.data.xp : 0) % 100);
+    const atRisk = gamification.data && gamification.data.streak > 0 && todayMin === 0;
+
+    return `
+      <div class="pulse-hero">
+        <div class="pulse-ring-wrap">
+          <svg class="pulse-big-ring" viewBox="0 0 80 80" width="76" height="76">
+            <circle cx="40" cy="40" r="34" stroke="var(--border)" stroke-width="7" fill="none"/>
+            <circle cx="40" cy="40" r="34" stroke="${pct >= 100 ? "#10b981" : "var(--accent)"}" stroke-width="7" fill="none"
+                    stroke-dasharray="${(pct / 100 * 2 * Math.PI * 34).toFixed(1)} ${(2 * Math.PI * 34).toFixed(1)}"
+                    stroke-linecap="round" transform="rotate(-90 40 40)"/>
+            <text x="40" y="38" text-anchor="middle" font-size="15" font-weight="700" fill="var(--text)">${pct}%</text>
+            <text x="40" y="52" text-anchor="middle" font-size="8.5" fill="var(--text-dim)">today</text>
+          </svg>
+          <div style="flex:1">
+            <div style="font-weight:700; font-size:1rem; color:var(--text)">🎯 ${todayMin}/${this.data.dailyGoalMin} min — ${pct >= 100 ? "goal crushed ✔" : pct >= 70 ? "almost there!" : "deep work ring"}</div>
+            <div style="font-size:0.78rem; color:var(--text-dim); margin-top:2px">
+              ⚡ ${xpToNext} XP to Level ${lvl + 1} · 🧊 ${fw} streak freeze${fw === 1 ? "" : "s"} left
+            </div>
+            <div class="pulse-week-bar"><span style="width:${weekPct}%"></span></div>
+            <div style="font-size:0.72rem; color:var(--text-dim)">📊 Weekly goal: ${weekMin}/${weeklyGoal} min (${weekPct}%) · 🏆 Best day this week: ${Math.max(day7, todayMin)} min</div>
+            ${atRisk ? `<div style="font-size:0.8rem; color:var(--error); font-weight:700; margin-top:6px">🔥 Streak at risk — read ${Math.max(1, Math.ceil(this.data.dailyGoalMin - todayMin))} min today to protect the flame</div>` : ""}
+          </div>
+        </div>
+      </div>
+    `;
+  },
+
+  /* ---------------- init & global listeners ---------------- */
+  init() {
+    this.load();
+    this.updateRingChip();
+    this.updateBadge();
+
+    // Activity pulses keep the session alive
+    ["scroll", "keydown", "pointerdown", "pointermove"].forEach(evt => {
+      document.addEventListener(evt, () => this.activityPing(), { passive: true });
+    });
+
+    // Tab visibility pauses/resumes implicitly via tick
+    document.addEventListener("visibilitychange", () => {
+      if (!document.hidden && this.session) this.session.lastActivity = Date.now();
+    });
+
+    // Session survives page close; at-risk nudge on unfinished goals
+    window.addEventListener("beforeunload", (e) => {
+      if (this.session) {
+        this.save();
+        if (this.data.todayMinutes < this.data.dailyGoalMin && this.session.seconds >= 300) {
+          e.preventDefault();
+          e.returnValue = `🔥 Streak alive — ${Math.ceil(this.data.dailyGoalMin - this.data.todayMinutes)} more min protects your flame`;
+        }
+      }
+    });
+
+    // Promise banner buttons
+    const yes = document.getElementById("pulsePromiseYes");
+    const no = document.getElementById("pulsePromiseNo");
+    if (yes) yes.addEventListener("click", () => {
+      if (state.activeKey) { this.addPromise(state.activeKey); quickToast("🤝 Promise locked — finish it today!"); }
+      hide(document.getElementById("pulsePromiseBanner"));
+    });
+    if (no) no.addEventListener("click", () => hide(document.getElementById("pulsePromiseBanner")));
+  }
+};
+
+
+/* ================================================================
    TIER-1 FEATURES
    1. Reading Position Memory
    2. SM-2 Spaced Repetition (flashcards)
@@ -6627,6 +7095,11 @@ const readingProgress = {
       readingProgress.set(state.activeKey, Math.max(0, Math.min(1, readerEl.scrollTop / max)));
       window.dispatchEvent(new CustomEvent("md-reader:read-progress", { detail: { key: state.activeKey } }));
       if (typeof uiRefresh === "object" && uiRefresh.updateReadStrip) uiRefresh.updateReadStrip(state.activeKey);
+      // Pulse: promise completion at 95% + live ring nudge
+      if (typeof studyPulse === "object") {
+        if (studyPulse.maybeCompletePromise) studyPulse.maybeCompletePromise(state.activeKey, Math.round((readerEl.scrollTop / max) * 100));
+        if (readerEl.scrollTop > 0 && readerEl.scrollTop % 3 === 0 && studyPulse.updateRingChip) studyPulse.updateRingChip();
+      }
     }, 400);
   }, { passive: true });
 })();
@@ -6912,6 +7385,8 @@ const studyDashboard = {
       <h2>Welcome back${hasActivity ? '' : ' to MD Reader'}</h2>
       <p class="empty-hint">${hasActivity ? 'Jump back in, or start something new.' : 'Pick a Markdown file from the sidebar to start reading.'}</p>
 
+      ${(typeof studyPulse === "object" && studyPulse.heroHtml) ? studyPulse.heroHtml() : ""}
+
       <div class="dash-grid">
         <div class="dash-card">
           <div class="dash-card-title">📖 Continue Reading</div>
@@ -6922,6 +7397,21 @@ const studyDashboard = {
           <div class="dash-card-title">🗂️ Flashcard Reviews</div>
           <div style="font-size:1.6rem;font-weight:700;color:${due > 0 ? 'var(--accent)' : 'var(--text-dim)'};margin:6px 0">${due} card${due === 1 ? '' : 's'} due today</div>
           <button id="dashStudyBtn" class="btn-primary" style="align-self:flex-start;padding:6px 14px;font-size:0.8rem;background:var(--accent);border:none;border-radius:var(--radius);color:var(--accent-contrast);cursor:pointer;font-weight:600" ${due === 0 ? 'disabled' : ''}>🧠 Study Now</button>
+        </div>
+
+        <div class="dash-card">
+          <div class="dash-card-title">🤝 Promises You Owe</div>
+          ${
+            (typeof studyPulse === "object" && studyPulse.owedPromises)
+              ? (studyPulse.owedPromises().length > 0
+                ? studyPulse.owedPromises().slice(0, 5).map(p => `
+                    <button class="dash-doc-row" data-dash-key="${escapeHtml(p.key)}" title="${escapeHtml(p.key)}">
+                      <span class="dash-doc-name">🤝 ${escapeHtml(p.key.split('/').pop().replace(/\.(md|markdown)$/i, ''))}</span>
+                      <span class="dash-doc-pct" style="color:${p.pct >= 80 ? '#059669' : 'var(--error)'}">${p.pct}% done</span>
+                    </button>`).join("")
+                : `<div style="font-size:0.8rem;color:var(--text-dim);padding:6px 0">No open promises — open a doc and commit to finishing it. That commitment is remarkably sticky. 🔒</div>`)
+              : ""
+          }
         </div>
 
         <div class="dash-card">

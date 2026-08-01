@@ -8,7 +8,7 @@
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
     "tail": "wrangler tail",
-    "test": "node --check public/js/app.js && node --check src/index.js && node tests/frontend.smoke.mjs && node tests/library.smoke.mjs && node tests/tier1.smoke.mjs && node tests/glossary.smoke.mjs && node tests/print.smoke.mjs && node tests/ui.smoke.mjs && node tests/zen.smoke.mjs && node tests/mindmap.smoke.mjs && node tests/fullscreen.smoke.mjs",
+    "test": "node --check public/js/app.js && node --check src/index.js && node tests/frontend.smoke.mjs && node tests/library.smoke.mjs && node tests/tier1.smoke.mjs && node tests/glossary.smoke.mjs && node tests/print.smoke.mjs && node tests/ui.smoke.mjs && node tests/zen.smoke.mjs && node tests/mindmap.smoke.mjs && node tests/fullscreen.smoke.mjs && node tests/pulse.smoke.mjs",
     "bucket:create": "wrangler r2 bucket create my-md-docs",
     "upload:sample": "wrangler r2 object put my-md-docs/intro.md --file=sample-docs/intro.md",
     "upload:sample2": "wrangler r2 object put my-md-docs/photosynthesis.md --file=sample-docs/photosynthesis.md"

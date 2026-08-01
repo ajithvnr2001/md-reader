@@ -3745,3 +3745,94 @@ body.is-fullscreen .reader {
 body.is-fullscreen .fullscreen-controls {
   bottom: calc(20px + env(safe-area-inset-bottom, 0px));
 }
+
+/* ---------- Study Pulse (engagement engine) ---------- */
+.pulse-ring-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg-card);
+  color: var(--text-dim);
+  font-size: 0.7rem;
+  font-weight: 700;
+  cursor: default;
+  flex-shrink: 0;
+}
+.pulse-ring-chip.done { border-color: #10b981; color: #10b981; background: rgba(16,185,129,0.08); }
+.pulse-ring-chip span { line-height: 1; }
+
+.pulse-promise-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  max-width: 740px;
+  margin: 0 auto 10px;
+  padding: 8px 14px;
+  background: var(--accent-bg);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius);
+  font-size: 0.8rem;
+  color: var(--text);
+  animation: slideDown 0.3s ease;
+}
+@keyframes slideDown {
+  from { opacity: 0; transform: translateY(-8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.pulse-hero { margin: 18px auto 4px; max-width: 740px; width: 100%; }
+.pulse-ring-wrap {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 16px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg, 12px);
+}
+.pulse-week-bar {
+  width: 100%;
+  height: 6px;
+  background: var(--bg-hover);
+  border-radius: 3px;
+  overflow: hidden;
+  margin-top: 8px;
+}
+.pulse-week-bar span { display: block; height: 100%; background: var(--accent); border-radius: 3px; transition: width 0.4s ease; }
+
+.pulse-milestone-modal {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 99998;
+  animation: fadeIn 0.25s ease;
+}
+.pulse-milestone-card {
+  background: var(--bg-card);
+  border: 1px solid var(--accent);
+  border-radius: 16px;
+  padding: 30px 36px;
+  text-align: center;
+  box-shadow: var(--shadow-lg), 0 0 60px var(--accent-glow);
+  animation: popIn 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
+  max-width: 320px;
+}
+@keyframes popIn {
+  from { opacity: 0; transform: scale(0.7); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+@media (max-width: 700px) {
+  .pulse-ring-wrap { flex-direction: column; align-items: flex-start; gap: 10px; }
+  .pulse-promise-banner { flex-direction: column; align-items: stretch; text-align: center; }
+  .pulse-promise-banner .lib-mini-btn { flex: 1; }
+  .pulse-ring-chip span { font-size: 0.65rem; }
+}
